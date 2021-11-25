@@ -1,8 +1,9 @@
 #ifndef PAF_PAF_H
 #define PAF_PAF_H
 
+#include <zlib.h>
 #include "kseq.h"
-KSTREAM_INIT(gzFile, gzread, 0x10000)
+KSEQ_INIT(gzFile, gzread)
 
 typedef struct {
 	void *fp;
@@ -11,10 +12,11 @@ typedef struct {
 
 typedef struct {
 	const char *qn, *tn; // these point to the input string; NOT allocated
-	uint32_t ql, qs, qe, tl, ts, te;
-	uint32_t ml, rev, bl;
+	uint32_t ql, qs, qe, tl, ts, te; //query len/start/end, target len/start/end
+	uint32_t ml;  //number of residue matches
+  uint32_t rev; //strand
+  uint32_t bl;  //alignment block length
 } paf_rec_t;
-
 
 paf_file_t *paf_open(const char *fn)
 {
@@ -42,7 +44,8 @@ int paf_close(paf_file_t *pf)
 }
 
 int paf_parse(int l, char *s, paf_rec_t *pr) // s must be NULL terminated
-{ // on return: <0 for failure; 0 for success; >0 for filtered
+{ 
+  // on return: <0 for failure; 0 for success; >0 for filtered
 	char *q, *r;
 	int i, t;
 	for (i = t = 0, q = s; i <= l; ++i) {

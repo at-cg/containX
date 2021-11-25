@@ -1,5 +1,5 @@
-EXE=containX
-LIBS=   -lz
+EXE= containX
+LIBS= -lz
 
 all:
 	$(CXX) $(CPPFLAGS) main.cpp -o $(EXE) $(LIBS) 
