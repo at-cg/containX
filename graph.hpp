@@ -8,44 +8,70 @@
 #include <fstream>
 #include "paf.hpp"
 
+/*
+                    |< ov_src >|
+  src: ------------------------>
+                    ||overlap|||
+               dst: -------------------------->
+                    |< ov_dst >|<---- len --->|
+
+  * if a read x has a suffix-prefix overlap with another read y, arcs x->y and ~y -> ~x are saved
+  * vertex ids will be formed as (read id << 31 | orientation); therefore two vertices per read
+  * we will maintain edges sorted by key <src, len>
+*/
 class graphArc
 {
   public:
     uint32_t src;
+    uint32_t len;
     uint32_t dst;
-    uint32_t rev_src:1, ov_src:31; //strand, length of suffix of src involved in overlap
-    uint32_t rev_dst:1, ov_dst:31; //strand, length of prefix of dst involved in overlap
+    uint32_t ov_src;  //strand, length of suffix of src involved in overlap
+    uint32_t ov_dst;  //strand, length of prefix of dst involved in overlap
+
+    /**
+     * The above storage format makes it easy to export in GFA format
+     * https://github.com/GFA-spec/GFA-spec/blob/master/GFA1.md#l-link-line
+     */
 };
 
+/**
+ * Tuples to record which reads are contained in which reads
+ * Unlike graph arcs, we will store read ids instead of vertex ids
+ */
 class containmentTuple
 {
   public:
     uint32_t src;              //read which is contained
     uint32_t dst;
-    uint32_t dst_start_offset; //(0-based; BED-like; closed) leftmost pos in forward orientation
+    uint32_t dst_start_offset; //(0-based; BED-like; closed) leftmost offset in dst's string
     uint32_t dst_end_offset;   //(0-based; BED-like; open)
-    uint32_t rev;              //dst strand
+    uint32_t rev;              //dst orientation
 
-    bool operator< (const containmentTuple &r )
-    {
-      return std::tie(src, rev) < std::tie(r.src, r.rev);
-    }
+    /**
+     * The above storage format makes it easy to export in GFA format
+     * https://github.com/GFA-spec/GFA-spec/blob/master/GFA1.md#c-containment-line
+     */
 };
 
 class graphcontainer
 {
   public:
+
+    uint32_t readCount;
+    uint32_t vertexCount;       //twice of readCount
     std::unordered_map <std::string, uint32_t> umap;  // size = count of reads
     std::vector<std::string> readseq;  //size = count of reads
     std::vector<bool> contained; //size = count of reads
     std::vector<bool> redundant;   //size = count of reads
     std::vector<graphArc> edges; //size = 2 x suffix-prefix overlaps 
+    std::vector<uint32_t> offsets; //for CSR format
     std::vector<containmentTuple> containments; //size = count of contained overlaps 
 
     //save user thresholds
     float min_ovlp_identity;
     int min_ovlp_len;
 
+    //save fastq read identifier into hash table, and give it an integer id
     uint32_t addStringToMap(const std::string &str)
     {
       if (umap.find(str) != umap.end())
@@ -60,24 +86,26 @@ class graphcontainer
       }
     }
 
+    //parse + save all reads, and mark the contained ones
     void initVectors(const char *readfilename)
     {
+      readCount = umap.size();
+      vertexCount = 2 * readCount;
+
+      assert (readCount > 0);
       assert (contained.size() == 0);
       assert (redundant.size() == 0);
       assert (readseq.size() == 0);
 
-      int vertexCount = umap.size();
-      contained.resize(vertexCount, false);
-      redundant.resize(vertexCount, false);
-      readseq.resize(vertexCount, "");
+      contained.resize(readCount, false);
+      redundant.resize(readCount, false);
+      readseq.resize(readCount, "");
 
-      std::sort(containments.begin(), containments.end());
 
       for (auto &e : containments)
         contained[e.src] = true;
 
-
-      std::cerr << "INFO, initVectors(), graph has " << vertexCount << " vertices in total\n";
+      std::cerr << "INFO, initVectors(), graph has " << vertexCount << " vertices from " << readCount << " reads in total\n";
       std::cerr << "INFO, initVectors(), " << std::count(contained.begin(), contained.end(), true) << " reads are marked as contained in graph\n";
 
       //parse reads
@@ -101,34 +129,60 @@ class graphcontainer
       }
     }
 
+    //sort edge vectors and index using CSR format
+    void indexEdges()
+    {
+      std::sort (edges.begin(), edges.end(), [](const graphArc &a, const graphArc &b) {
+          return std::tie (a.src, a.len) < std::tie (b.src, b.len);});
+
+      std::sort (containments.begin(), containments.end(), [](const containmentTuple &a, const containmentTuple &b) {
+          return a.src < b.src;});
+
+      /**
+       * Build offsets array such that out-edges
+       * of vertex i are accessible from edges[offset[i]]
+       * inclusive to edges[offset[i] + 1] exclusive
+       */
+      assert(vertexCount>0);
+      offsets.resize(vertexCount + 1, 0);
+
+      auto it_b = edges.begin();
+      offsets[0] = 0;
+
+      for(uint32_t i = 0; i < vertexCount; i++)
+      {
+        //Range for adjacency list of vertex i
+        auto it_e = std::find_if(it_b, edges.end(), [i](const graphArc &e) { return e.src > i; });
+        offsets[i+1] = std::distance(edges.begin(), it_e);
+        it_b = it_e;
+      }
+    }
+
+    //count of out-edges from a graph vertex
+    uint32_t getDegree (uint32_t src) const
+    {
+      assert (offsets.size() == vertexCount + 1);
+      assert (src < vertexCount);
+
+      return offsets[src + 1] - offsets[src];
+    }
+
+    //also see https://github.com/GFA-spec/GFA-spec/blob/master/GFA1.md
     void outputGFA (const std::string &filename) const
     {
       std::ofstream outstrm (filename);
 
-      //print reads - use prefix utg before their id
+      //print reads - use prefix 'read' before their id
       for (uint32_t i = 0; i < umap.size(); i++)
-        outstrm  << "S\tutg" << i << "\t" << readseq[i] << "\n";
+        outstrm  << "S\tread" << i << "\t" << readseq[i] << "\n";
 
       //print arcs
       for (uint32_t i = 0; i < edges.size(); i++)
-        outstrm << "L\tutg" << edges[i].src << "\t" << "+-"[edges[i].rev_src] <<  "\tutg" << edges[i].dst << "\t" << "+-"[edges[i].rev_dst] << "\t" << edges[i].ov_src <<  "M\n"; 
-
-      /**
-       * URL: https://github.com/GFA-spec/GFA-spec/blob/master/GFA1.md
-       * A link from utg1 to utg2 means that the end of utg1 overlaps with the start of utg2
-       *     L <utg1> <utg1-orient> <utg2> <utg2-orient> <Overlap>
-       */
+        outstrm << "L\tread" << (edges[i].src >> 1) << "\t" << "+-"[edges[i].src & 1] <<  "\tread" << (edges[i].dst >> 1) << "\t" << "+-"[edges[i].dst & 1] << "\t" << edges[i].ov_src <<  "M\n";
 
       //print containment lines
       for (uint32_t i = 0; i < containments.size(); i++)
-        outstrm << "C\tutg" << containments[i].dst << "\t" << "+-"[containments[i].rev] << "\tutg" << containments[i].src << "\t+\t" << containments[i].dst_start_offset << "\t" << containments[i].dst_end_offset - containments[i].dst_start_offset<< "M\n"; 
-
-      /**
-       * Example (from GFA1 spec)
-       * The following line describes the containment of segment utg2 in the reverse 
-       * complement of segment utg1, starting at position 110 of segment utg1 (in its forward orientation).
-       *      C  utg1 - utg2 + 110 100M
-       */
+        outstrm << "C\tread" << containments[i].dst << "\t" << "+-"[containments[i].rev] << "\tread" << containments[i].src << "\t+\t" << containments[i].dst_start_offset << "\t" << containments[i].dst_end_offset - containments[i].dst_start_offset<< "M\n";
     }
 };
 
@@ -156,16 +210,16 @@ void ovlgraph_gen(const char *readfilename, const char *paffilename, float min_o
         validPaf++;
         std::string qname = r.qn;
         std::string tname = r.tn;
-        uint32_t q_vertexId = g.addStringToMap(qname);
-        uint32_t t_vertexId = g.addStringToMap(tname);
+        uint32_t q_readId = g.addStringToMap(qname);
+        uint32_t t_readId = g.addStringToMap(tname);
 
-        if (q_vertexId == t_vertexId) continue;
+        if (q_readId == t_readId) continue;
 
         if (r.qe - r.qs == r.ql) //qry is contained in target
         {
           containmentTuple c;
-          c.src = q_vertexId;
-          c.dst = t_vertexId;
+          c.src = q_readId;
+          c.dst = t_readId;
           c.rev = r.rev;  
           c.dst_start_offset = r.ts;
           c.dst_end_offset = r.te;
@@ -175,8 +229,8 @@ void ovlgraph_gen(const char *readfilename, const char *paffilename, float min_o
         if (r.te - r.ts == r.tl) //target is contained in qry
         {
           containmentTuple c;
-          c.src = t_vertexId;
-          c.dst = q_vertexId;
+          c.src = t_readId;
+          c.dst = q_readId;
           c.rev = r.rev;
           c.dst_start_offset = r.qs;
           c.dst_end_offset = r.qe;
@@ -195,21 +249,19 @@ void ovlgraph_gen(const char *readfilename, const char *paffilename, float min_o
           graphArc e1, e2;
 
           {
-            e1.src = q_vertexId;
-            e1.dst = t_vertexId;
-            e1.rev_src = 0;
-            e1.rev_dst = 0;
+            e1.src = q_readId << 1 | 0;
+            e1.dst = t_readId << 1 | 0;
             e1.ov_src = r.qe - r.qs;
             e1.ov_dst = r.te - r.ts;
+            e1.len = r.tl - e1.ov_dst;
           }
 
           {
-            e2.src = t_vertexId;
-            e2.dst = q_vertexId;
-            e2.rev_src = 1;
-            e2.rev_dst = 1;
+            e2.src = t_readId << 1 | 1;
+            e2.dst = q_readId << 1 | 1;
             e2.ov_src = r.te - r.ts;
             e2.ov_dst = r.qe - r.qs;
+            e2.len = r.ql - e2.ov_dst;
           }
 
           g.edges.emplace_back(e1);
@@ -217,26 +269,24 @@ void ovlgraph_gen(const char *readfilename, const char *paffilename, float min_o
           suffPrefPaf++;
         }
         //a prefix of qry overlaps a suffix of target
-        if (r.rev == 0 && r.qs == 0 && r.qe < r.ql && r.ts > 0 && r.te == r.tl)
+        else if (r.rev == 0 && r.qs == 0 && r.qe < r.ql && r.ts > 0 && r.te == r.tl)
         {
           graphArc e1, e2;
 
           {
-            e1.src = t_vertexId;
-            e1.dst = q_vertexId;
-            e1.rev_src = 0;
-            e1.rev_dst = 0;
+            e1.src = t_readId << 1 | 0;
+            e1.dst = q_readId << 1 | 0;
             e1.ov_src = r.te - r.ts;
             e1.ov_dst = r.qe - r.qs;
+            e1.len = r.ql - e1.ov_dst;
           }
 
           {
-            e2.src = q_vertexId;
-            e2.dst = t_vertexId;
-            e2.rev_src = 1;
-            e2.rev_dst = 1;
+            e2.src = q_readId << 1 | 1;
+            e2.dst = t_readId << 1 | 1;
             e2.ov_src = r.qe - r.qs;
             e2.ov_dst = r.te - r.ts;
+            e2.len = r.tl - e2.ov_dst;
           }
 
           g.edges.emplace_back(e1);
@@ -244,26 +294,24 @@ void ovlgraph_gen(const char *readfilename, const char *paffilename, float min_o
           suffPrefPaf++;
         }
         //a suffix of ~qry overlaps a prefix of target
-        if (r.rev == 1 && r.qs == 0 && r.qe < r.ql && r.ts == 0 && r.te < r.tl)
+        else if (r.rev == 1 && r.qs == 0 && r.qe < r.ql && r.ts == 0 && r.te < r.tl)
         {
           graphArc e1, e2;
 
           {
-            e1.src = q_vertexId;
-            e1.dst = t_vertexId;
-            e1.rev_src = 1;
-            e1.rev_dst = 0;
+            e1.src = q_readId << 1 | 1;
+            e1.dst = t_readId << 1 | 0;
             e1.ov_src = r.qe - r.qs;
             e1.ov_dst = r.te - r.ts;
+            e1.len = r.tl - e1.ov_dst;
           }
 
           {
-            e2.src = t_vertexId;
-            e2.dst = q_vertexId;
-            e2.rev_src = 1;
-            e2.rev_dst = 0;
+            e2.src = t_readId << 1 | 1;
+            e2.dst = q_readId << 1 | 0;
             e2.ov_src = r.te - r.ts;
             e2.ov_dst = r.qe - r.qs;
+            e2.len = r.ql - e2.ov_dst;
           }
 
           g.edges.emplace_back(e1);
@@ -271,26 +319,24 @@ void ovlgraph_gen(const char *readfilename, const char *paffilename, float min_o
           suffPrefPaf++;
         }
         //a prefix of ~qry overlaps a suffix of target
-        if (r.rev == 1 && r.qs > 0 && r.qe == r.ql && r.ts > 0 && r.te == r.tl)
+        else if (r.rev == 1 && r.qs > 0 && r.qe == r.ql && r.ts > 0 && r.te == r.tl)
         {
           graphArc e1, e2;
 
           {
-            e1.src = t_vertexId;
-            e1.dst = q_vertexId;
-            e1.rev_src = 0;
-            e1.rev_dst = 1;
+            e1.src = t_readId << 1 | 0;
+            e1.dst = q_readId << 1 | 1;
             e1.ov_src = r.te - r.ts;
             e1.ov_dst = r.qe - r.qs;
+            e1.len = r.ql - e1.ov_dst;
           }
 
           {
-            e2.src = q_vertexId;
-            e2.dst = t_vertexId;
-            e2.rev_src = 0;
-            e2.rev_dst = 1;
+            e2.src = q_readId << 1 | 0;
+            e2.dst = t_readId << 1 | 1;
             e2.ov_src = r.qe - r.qs;
             e2.ov_dst = r.te - r.ts;
+            e2.len = r.tl - e2.ov_dst;
           }
 
           g.edges.emplace_back(e1);
@@ -312,7 +358,7 @@ void ovlgraph_gen(const char *readfilename, const char *paffilename, float min_o
   g.min_ovlp_identity = min_ovlp_identity;
 
   g.initVectors(readfilename);
-
+  g.indexEdges();
 }
 
 #endif
