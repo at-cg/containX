@@ -27,6 +27,7 @@ class graphArc
     uint32_t dst;
     uint32_t ov_src;  //strand, length of suffix of src involved in overlap
     uint32_t ov_dst;  //strand, length of prefix of dst involved in overlap
+    bool del;         //mark for deletion if needed
 
     /**
      * The above storage format makes it easy to export in GFA format
@@ -105,6 +106,7 @@ class graphcontainer
       for (auto &e : containments)
         contained[e.src] = true;
 
+      std::cerr << "INFO, initVectors(), graph has " << edges.size() << " edges\n";
       std::cerr << "INFO, initVectors(), graph has " << vertexCount << " vertices from " << readCount << " reads in total\n";
       std::cerr << "INFO, initVectors(), " << std::count(contained.begin(), contained.end(), true) << " reads are marked as contained in graph\n";
 
@@ -147,7 +149,6 @@ class graphcontainer
       offsets.resize(vertexCount + 1, 0);
 
       auto it_b = edges.begin();
-      offsets[0] = 0;
 
       for(uint32_t i = 0; i < vertexCount; i++)
       {
@@ -156,6 +157,8 @@ class graphcontainer
         offsets[i+1] = std::distance(edges.begin(), it_e);
         it_b = it_e;
       }
+
+      assert (it_b == edges.end());
     }
 
     //count of out-edges from a graph vertex
@@ -174,21 +177,104 @@ class graphcontainer
 
       //print reads - use prefix 'read' before their id
       for (uint32_t i = 0; i < umap.size(); i++)
-        outstrm  << "S\tread" << i << "\t" << readseq[i] << "\n";
+        if (redundant[i] == false)
+          outstrm  << "S\tread" << i << "\t" << readseq[i] << "\n";
 
       //print arcs
-      for (uint32_t i = 0; i < edges.size(); i++)
-        outstrm << "L\tread" << (edges[i].src >> 1) << "\t" << "+-"[edges[i].src & 1] <<  "\tread" << (edges[i].dst >> 1) << "\t" << "+-"[edges[i].dst & 1] << "\t" << edges[i].ov_src <<  "M\n";
+      for (uint32_t i = 0; i < edges.size(); i++) {
+        if (edges[i].del == false)
+        {
+          assert (redundant[edges[i].src >> 1] == false);
+          assert (redundant[edges[i].dst >> 1] == false);
+          outstrm << "L\tread" << (edges[i].src >> 1) << "\t" << "+-"[edges[i].src & 1] <<  "\tread" << (edges[i].dst >> 1) << "\t" << "+-"[edges[i].dst & 1] << "\t" << edges[i].ov_src <<  "M\n";
+        }
+      }
 
       //print containment lines
       for (uint32_t i = 0; i < containments.size(); i++)
-        outstrm << "C\tread" << containments[i].dst << "\t" << "+-"[containments[i].rev] << "\tread" << containments[i].src << "\t+\t" << containments[i].dst_start_offset << "\t" << containments[i].dst_end_offset - containments[i].dst_start_offset<< "M\n";
+        if (redundant[containments[i].src] == false && redundant[containments[i].dst] == false)
+          outstrm << "C\tread" << containments[i].dst << "\t" << "+-"[containments[i].rev] << "\tread" << containments[i].src << "\t+\t" << containments[i].dst_start_offset << "\t" << containments[i].dst_end_offset - containments[i].dst_start_offset<< "M\n";
+    }
+
+    //consider all contained reads as redundtant and remove them from graph 
+    void removeContainedReads()
+    {
+      for (uint32_t i = 0; i < readCount; i++)
+        redundant[i] = contained[i];
+
+      std::vector<graphArc> edges_new;
+
+      for (auto &e : edges)
+      {
+        if (redundant[e.src >> 1] == false && redundant[e.dst >> 1] == false)
+          edges_new.emplace_back(e);
+      }
+
+      edges = edges_new;
+      std::cerr << "INFO, removeContainedReads(), " << edges.size() << " edges remain after marking all contained reads as redundant\n"; 
+    }
+
+    //algorithm motivated from Myers 2005
+    uint32_t transitiveReduction(int fuzz)
+    {
+      //mark 0 : default, 1 : in-play, 2 : reduced
+      std::vector<uint8_t> mark (vertexCount, 0);
+      //save length of edge from vertex being considered
+      std::vector<uint32_t> len (vertexCount, 0);
+      uint32_t n_reduced = 0;
+      
+      for (uint32_t v = 0; v < vertexCount; v++)
+      {
+        uint32_t v_degree = getDegree (v);
+        if (v_degree == 0) continue;
+
+        //neighborhood of v
+        for (uint32_t j = offsets[v]; j < offsets[v+1]; j++)
+        {
+          uint32_t w = edges[j].dst;
+          len[w] = edges[j].len; 
+          mark[w] = 1; //in-play
+        }
+
+        uint32_t longest = edges[offsets[v+1] - 1].len + fuzz;
+
+        //neighborhood of v
+        for (uint32_t j = offsets[v]; j < offsets[v+1]; j++)
+        {
+          uint32_t w = edges[j].dst;
+          if (mark[w] != 1) continue;
+
+          //neighborhood of w
+          for (uint32_t k = offsets[w]; k < offsets[w+1]; k++)
+          {
+            uint32_t x = edges[k].dst;
+            uint32_t sum = edges[j].len + edges[k].len; // v->w + w->x
+            if (sum > longest) break;
+            if (mark[x] == 1 && sum < len[x] + fuzz && sum + fuzz > len[x])
+              mark [x] = 2; //eliminate edge v -> x
+          }
+        }
+
+        for (uint32_t j = offsets[v]; j < offsets[v+1]; j++)
+        {
+          uint32_t w = edges[j].dst;
+          if (mark[w] == 2) { 
+            edges[j].del = true, n_reduced++;
+          }
+          mark[w] = 0; //not in-play any more
+        }
+      }
+
+      std::cerr << "INFO, transitiveReduction(), reduced " << n_reduced << " edges\n";
+
+      return n_reduced;
     }
 };
 
 #warning "we assume that overlapper skipped dual mappings, minimap2 overlapping module skips by default"
 #warning "substring overlaps which are not suffix-prefix are ignored"
-void ovlgraph_gen(const char *readfilename, const char *paffilename, float min_ovlp_identity, int min_ovlp_len, graphcontainer &g)
+void ovlgraph_gen(const char *readfilename, const char *paffilename, float min_ovlp_identity, int min_ovlp_len, int fuzz, 
+    bool removeContainedReads, graphcontainer &g)
 {
   //read input paf file
   paf_rec_t r;
@@ -354,11 +440,15 @@ void ovlgraph_gen(const char *readfilename, const char *paffilename, float min_o
   std::cerr << "INFO, ovlgraph_gen(), " << containedPaf << " records belonged to contained overlaps\n";
   std::cerr << "INFO, ovlgraph_gen(), " << suffPrefPaf << " records belonged to proper suffix-prefix overlaps\n";
 
+  std::for_each(g.edges.begin(), g.edges.end(), [](graphArc &e){e.del = false;});
   g.min_ovlp_len = min_ovlp_len;
   g.min_ovlp_identity = min_ovlp_identity;
 
   g.initVectors(readfilename);
+  if (removeContainedReads) g.removeContainedReads();
   g.indexEdges();
+  if (fuzz != INT32_MAX)
+    g.transitiveReduction (fuzz);
 }
 
 #endif
