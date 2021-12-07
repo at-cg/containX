@@ -431,6 +431,9 @@ void ovlgraph_gen(const char *readfilename, const char *paffilename, float min_o
         }
       }
     }
+
+    if (totPaf % 10000000 == 0)
+      std::cerr << "INFO, ovlgraph_gen(), parsed " << totPaf << " paf records\n";
   }
 
   paf_close(fp);
