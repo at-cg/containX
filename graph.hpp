@@ -67,6 +67,7 @@ class graphcontainer
     std::vector<graphArc> edges; //size = 2 x suffix-prefix overlaps 
     std::vector<uint32_t> offsets; //for CSR format
     std::vector<containmentTuple> containments; //size = count of contained overlaps 
+    std::vector<uint32_t> containment_offsets; //for CSR format
 
     //save user thresholds
     float min_ovlp_identity;
@@ -131,14 +132,18 @@ class graphcontainer
       }
     }
 
+    //index edges and containments
+    void index()
+    {
+      indexEdges();
+      indexContainments();
+    }
+
     //sort edge vectors and index using CSR format
     void indexEdges()
     {
       std::sort (edges.begin(), edges.end(), [](const graphArc &a, const graphArc &b) {
           return std::tie (a.src, a.len) < std::tie (b.src, b.len);});
-
-      std::sort (containments.begin(), containments.end(), [](const containmentTuple &a, const containmentTuple &b) {
-          return a.src < b.src;});
 
       /**
        * Build offsets array such that out-edges
@@ -161,6 +166,28 @@ class graphcontainer
       assert (it_b == edges.end());
     }
 
+    //index containment relationships, for fast retrieval of all reads containing a particular read
+    void indexContainments()
+    {
+      std::sort (containments.begin(), containments.end(), [](const containmentTuple &a, const containmentTuple &b) {
+          return a.src < b.src;});
+
+      if (readCount == 0) return;
+      containment_offsets.resize(readCount + 1, 0);
+
+      auto it_b = containments.begin();
+
+      for(uint32_t i = 0; i < readCount; i++)
+      {
+        //Range for adjacency list of vertex i
+        auto it_e = std::find_if(it_b, containments.end(), [i](const containmentTuple &e) { return e.src > i; });
+        containment_offsets[i+1] = std::distance(containments.begin(), it_e);
+        it_b = it_e;
+      }
+
+      assert (it_b == containments.end());
+    }
+
     //count of out-edges from a graph vertex
     uint32_t getDegree (uint32_t src) const
     {
@@ -171,14 +198,17 @@ class graphcontainer
     }
 
     //also see https://github.com/GFA-spec/GFA-spec/blob/master/GFA1.md
-    void outputGFA (const std::string &filename) const
+    void outputGFA (const std::string &filename, bool printReadStrings) const
     {
       std::ofstream outstrm (filename);
 
       //print reads - use prefix 'read' before their id
-      for (uint32_t i = 0; i < umap.size(); i++)
+      for (uint32_t i = 0; i < readCount; i++)
         if (redundant[i] == false)
-          outstrm  << "S\tread" << i << "\t" << readseq[i] << "\n";
+          if (printReadStrings)
+            outstrm  << "S\tread" << i << "\t" << readseq[i] << "\n";
+          else
+            outstrm  << "S\tread" << i << "\t*\n";
 
       //print arcs
       for (uint32_t i = 0; i < edges.size(); i++) {
@@ -194,6 +224,17 @@ class graphcontainer
       for (uint32_t i = 0; i < containments.size(); i++)
         if (redundant[containments[i].src] == false && redundant[containments[i].dst] == false)
           outstrm << "C\tread" << containments[i].dst << "\t" << "+-"[containments[i].rev] << "\tread" << containments[i].src << "\t+\t" << containments[i].dst_start_offset << "\t" << containments[i].dst_end_offset - containments[i].dst_start_offset<< "M\n";
+
+      //print summary of reads, may help in debugging
+      for (auto &e : umap)
+      {
+        uint32_t i = e.second; //read id
+        uint32_t cnt_parent_reads = containment_offsets[i+1] - containment_offsets[i];
+        //print original read id, length, count of reads containing it, out-degree (fwd), out-degree (rev)
+        if (redundant[i] == false) {
+            outstrm  << "x\tread" << i << "\t" << e.first << "\t" << readseq[i].length() << "\t" << cnt_parent_reads << "\t" << getDegree (i << 1 | 0) << "\t" << getDegree (i << 1 | 1) << "\n";
+        }
+      }
     }
 
     //consider all contained reads as redundtant and remove them from graph 
@@ -272,7 +313,7 @@ class graphcontainer
 };
 
 #warning "we assume that overlapper skipped dual mappings, minimap2 overlapping module skips by default"
-#warning "substring overlaps which are not suffix-prefix are ignored"
+#warning "substring overlaps which are not suffix-prefix are ignored, may need to relax this later"
 void ovlgraph_gen(const char *readfilename, const char *paffilename, float min_ovlp_identity, int min_ovlp_len, int fuzz, 
     bool removeContainedReads, graphcontainer &g)
 {
@@ -449,7 +490,7 @@ void ovlgraph_gen(const char *readfilename, const char *paffilename, float min_o
 
   g.initVectors(readfilename);
   if (removeContainedReads) g.removeContainedReads();
-  g.indexEdges();
+  g.index();
   if (fuzz != INT32_MAX)
     g.transitiveReduction (fuzz);
 }

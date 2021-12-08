@@ -12,14 +12,16 @@ int main(int argc, char *argv[])
   int min_ovlp_len = 0; 
   int c;
   std::string gfadumpfilename;
+  bool printReadStrings = true;
   int fuzz = INT32_MAX;
   bool removeContainedReads = false;
 
-  while ((c = ketopt(&o, argc, argv, 1, "l:i:d:t:c", 0)) >= 0)
+  while ((c = ketopt(&o, argc, argv, 1, "l:i:d:D:t:c", 0)) >= 0)
   {
     if (c == 'i') min_ovlp_identity = atof(o.arg);
     else if (c == 'l') min_ovlp_len = atoi(o.arg);
     else if (c == 'd') gfadumpfilename = o.arg;
+    else if (c == 'D') gfadumpfilename = o.arg, printReadStrings = false;
     else if (c == 't') fuzz = atoi(o.arg);
     else if (c == 'c') removeContainedReads = true;
   }
@@ -33,6 +35,7 @@ int main(int argc, char *argv[])
     std::cerr << "  -c          mark all contained reads as redundant and remove\n";
     std::cerr << "  -t NUM      enable transitive reduction using given fuzz, disabled by default\n";
     std::cerr << "  -d FILE     dump graph in gfa format\n";
+    std::cerr << "  -D FILE     dump graph in gfa format without sequences\n";
     return 1;
   }
 
@@ -44,7 +47,7 @@ int main(int argc, char *argv[])
   ovlgraph_gen (argv[o.ind], argv[o.ind+1], min_ovlp_identity, min_ovlp_len, fuzz, removeContainedReads, g);
 
   if (!gfadumpfilename.empty())
-    g.outputGFA (gfadumpfilename);
+    g.outputGFA (gfadumpfilename, printReadStrings);
 
   //log complete command given by user
   fprintf(stderr, "INFO, %s(), CMD:", __func__);
