@@ -93,7 +93,7 @@ class graphcontainer
       readCount = umap.size();
       vertexCount = 2 * readCount;
 
-      assert (readCount > 0);
+      if (readCount == 0) return;
       assert (contained.size() == 0);
       assert (redundant.size() == 0);
       assert (readseq.size() == 0);
@@ -145,7 +145,7 @@ class graphcontainer
        * of vertex i are accessible from edges[offset[i]]
        * inclusive to edges[offset[i] + 1] exclusive
        */
-      assert(vertexCount>0);
+      if (vertexCount == 0) return;
       offsets.resize(vertexCount + 1, 0);
 
       auto it_b = edges.begin();
