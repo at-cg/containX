@@ -49,6 +49,9 @@ int main(int argc, char *argv[])
   if (!gfadumpfilename.empty())
     g.outputGFA (gfadumpfilename, printReadStrings);
 
+  printContainmentDegreeDistribution (g); 
+  printDegreeDistribution (g);
+
   //log complete command given by user
   fprintf(stderr, "INFO, %s(), CMD:", __func__);
   for (int i = 0; i < argc; ++i)

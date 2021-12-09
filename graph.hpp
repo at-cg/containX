@@ -197,6 +197,15 @@ class graphcontainer
       return offsets[src + 1] - offsets[src];
     }
 
+    //count of reads containing the read 'src'
+    uint32_t getContaintmentDegree (uint32_t src) const
+    {
+      assert (containment_offsets.size() == readCount + 1);
+      assert (src < readCount);
+
+      return containment_offsets[src + 1] - containment_offsets[src];
+    }
+
     //also see https://github.com/GFA-spec/GFA-spec/blob/master/GFA1.md
     void outputGFA (const std::string &filename, bool printReadStrings) const
     {
@@ -229,10 +238,9 @@ class graphcontainer
       for (auto &e : umap)
       {
         uint32_t i = e.second; //read id
-        uint32_t cnt_parent_reads = containment_offsets[i+1] - containment_offsets[i];
         //print original read id, length, count of reads containing it, out-degree (fwd), out-degree (rev)
         if (redundant[i] == false) {
-            outstrm  << "x\tread" << i << "\t" << e.first << "\t" << readseq[i].length() << "\t" << cnt_parent_reads << "\t" << getDegree (i << 1 | 0) << "\t" << getDegree (i << 1 | 1) << "\n";
+            outstrm  << "x\tread" << i << "\t" << e.first << "\t" << readseq[i].length() << "\t" << getContaintmentDegree(i) << "\t" << getDegree (i << 1 | 0) << "\t" << getDegree (i << 1 | 1) << "\n";
         }
       }
     }
@@ -493,6 +501,52 @@ void ovlgraph_gen(const char *readfilename, const char *paffilename, float min_o
   g.index();
   if (fuzz != INT32_MAX)
     g.transitiveReduction (fuzz);
+}
+
+/**
+ * suppose containment degree of a read equals the count of 
+ * reads containing it; then the following function prints 
+ * distribution of containment degrees in the graph
+ *
+ * write to file ContainmentDegree.txt (overwrite if already exists)
+ * NOTE: redundant reads are not ignored
+ */
+void printContainmentDegreeDistribution (graphcontainer &g)
+{
+  uint32_t maxDegree = 0;
+  for (uint32_t i = 0; i < g.readCount; i++)
+    maxDegree = std::max (maxDegree, g.getContaintmentDegree(i));
+
+  std::vector<uint32_t> distribution(maxDegree+1, 0); 
+
+  for (uint32_t i = 0; i < g.readCount; i++)
+    distribution[g.getContaintmentDegree(i)]++;
+
+  //write to file
+  std::ofstream outFile("ContainmentDegree.txt");
+  for (const auto &e : distribution) outFile << e << "\n";
+}
+
+/**
+ * the following function prints 
+ * distribution of vertex out-degree in the graph
+ * write to file Degree.txt (overwrite if already exists)
+ * NOTE: deleted edges are not ignored
+ */
+void printDegreeDistribution (graphcontainer &g)
+{
+  uint32_t maxDegree = 0;
+  for (uint32_t i = 0; i < g.vertexCount; i++)
+    maxDegree = std::max (maxDegree, g.getDegree(i));
+
+  std::vector<uint32_t> distribution(maxDegree+1, 0); 
+
+  for (uint32_t i = 0; i < g.vertexCount; i++)
+    distribution[g.getDegree(i)]++;
+
+  //write to file
+  std::ofstream outFile("Degree.txt");
+  for (const auto &e : distribution) outFile << e << "\n";
 }
 
 #endif
