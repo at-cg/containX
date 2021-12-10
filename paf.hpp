@@ -44,7 +44,7 @@ int paf_close(paf_file_t *pf)
 }
 
 int paf_parse(int l, char *s, paf_rec_t *pr) // s must be NULL terminated
-{ 
+{
   // on return: <0 for failure; 0 for success; >0 for filtered
 	char *q, *r;
 	int i, t;

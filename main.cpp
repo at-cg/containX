@@ -3,13 +3,14 @@
 #include <zlib.h>
 
 #include "graph.hpp"
+#include "algo.hpp"
 #include "ketopt.h"
 
 int main(int argc, char *argv[])
 {
   ketopt_t o = KETOPT_INIT;
   float min_ovlp_identity = 0.0; //[0-100]
-  int min_ovlp_len = 0; 
+  int min_ovlp_len = 0;
   int c;
   std::string gfadumpfilename;
   bool printReadStrings = true;
@@ -43,14 +44,22 @@ int main(int argc, char *argv[])
   assert (min_ovlp_identity <= 100.0);
   assert (fuzz >= 0);
 
-  graphcontainer g; 
+  graphcontainer g;
   ovlgraph_gen (argv[o.ind], argv[o.ind+1], min_ovlp_identity, min_ovlp_len, fuzz, removeContainedReads, g);
 
   if (!gfadumpfilename.empty())
     g.outputGFA (gfadumpfilename, printReadStrings);
 
-  printContainmentDegreeDistribution (g); 
-  printDegreeDistribution (g);
+  //printContainmentDegreeDistribution (g);
+  //printDegreeDistribution (g);
+
+  algoParams param;
+  {
+    param.maxContainmentDegree = 5, param.depth = 5, param.k = 16;
+    param.d = 1.0/param.k, param.cutoff = 1.0;
+  }
+
+  identifyRedundantReads (g, param);
 
   //log complete command given by user
   fprintf(stderr, "INFO, %s(), CMD:", __func__);

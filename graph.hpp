@@ -64,9 +64,9 @@ class graphcontainer
     std::vector<std::string> readseq;  //size = count of reads
     std::vector<bool> contained; //size = count of reads
     std::vector<bool> redundant;   //size = count of reads
-    std::vector<graphArc> edges; //size = 2 x suffix-prefix overlaps 
+    std::vector<graphArc> edges; //size = 2 x suffix-prefix overlaps
     std::vector<uint32_t> offsets; //for CSR format
-    std::vector<containmentTuple> containments; //size = count of contained overlaps 
+    std::vector<containmentTuple> containments; //size = count of contained overlaps
     std::vector<uint32_t> containment_offsets; //for CSR format
 
     //save user thresholds
@@ -142,6 +142,12 @@ class graphcontainer
     //sort edge vectors and index using CSR format
     void indexEdges()
     {
+      //get rid of deleted edges as well as edges connecting to redundant vertices
+      {
+        auto it = std::remove_if (edges.begin(), edges.end(), [this](const graphArc &a) {return redundant[a.src >> 1] || redundant[a.dst >> 1] || a.del; });
+        edges.erase (it, edges.end());
+      }
+
       std::sort (edges.begin(), edges.end(), [](const graphArc &a, const graphArc &b) {
           return std::tie (a.src, a.len) < std::tie (b.src, b.len);});
 
@@ -169,6 +175,12 @@ class graphcontainer
     //index containment relationships, for fast retrieval of all reads containing a particular read
     void indexContainments()
     {
+      //get rid of containments involving reads marked as redundant
+      {
+        auto it = std::remove_if (containments.begin(), containments.end(), [this](const containmentTuple &a) {return redundant[a.src] || redundant[a.dst]; });
+        containments.erase (it, containments.end());
+      }
+
       std::sort (containments.begin(), containments.end(), [](const containmentTuple &a, const containmentTuple &b) {
           return a.src < b.src;});
 
@@ -245,7 +257,7 @@ class graphcontainer
       }
     }
 
-    //consider all contained reads as redundtant and remove them from graph 
+    //consider all contained reads as redundant and remove them from graph
     void removeContainedReads()
     {
       for (uint32_t i = 0; i < readCount; i++)
@@ -255,12 +267,34 @@ class graphcontainer
 
       for (auto &e : edges)
       {
+        //check if both end vertices of the edge are non-redundant
         if (redundant[e.src >> 1] == false && redundant[e.dst >> 1] == false)
           edges_new.emplace_back(e);
       }
 
       edges = edges_new;
-      std::cerr << "INFO, removeContainedReads(), " << edges.size() << " edges remain after marking all contained reads as redundant\n"; 
+      std::cerr << "INFO, removeContainedReads(), " << edges.size() << " edges remain after marking all contained reads as redundant\n";
+    }
+
+    //consider contained reads as redundant if their
+    //'containment degree' is > maxDegree
+    void removeContainedReadsAboveDegree(uint32_t maxDegree)
+    {
+      for (uint32_t i = 0; i < readCount; i++)
+        if (getContaintmentDegree (i) > maxDegree)
+          redundant[i] = contained[i];
+
+      std::vector<graphArc> edges_new;
+
+      for (auto &e : edges)
+      {
+        //check if both end vertices of the edge are non-redundant
+        if (redundant[e.src >> 1] == false && redundant[e.dst >> 1] == false)
+          edges_new.emplace_back(e);
+      }
+
+      edges = edges_new;
+      std::cerr << "INFO, removeContainedReadsAboveDegree(), " << edges.size() << " edges remain after marking all contained reads as redundant\n";
     }
 
     //algorithm motivated from Myers 2005
@@ -271,7 +305,7 @@ class graphcontainer
       //save length of edge from vertex being considered
       std::vector<uint32_t> len (vertexCount, 0);
       uint32_t n_reduced = 0;
-      
+
       for (uint32_t v = 0; v < vertexCount; v++)
       {
         uint32_t v_degree = getDegree (v);
@@ -281,7 +315,7 @@ class graphcontainer
         for (uint32_t j = offsets[v]; j < offsets[v+1]; j++)
         {
           uint32_t w = edges[j].dst;
-          len[w] = edges[j].len; 
+          len[w] = edges[j].len;
           mark[w] = 1; //in-play
         }
 
@@ -307,7 +341,7 @@ class graphcontainer
         for (uint32_t j = offsets[v]; j < offsets[v+1]; j++)
         {
           uint32_t w = edges[j].dst;
-          if (mark[w] == 2) { 
+          if (mark[w] == 2) {
             edges[j].del = true, n_reduced++;
           }
           mark[w] = 0; //not in-play any more
@@ -322,7 +356,7 @@ class graphcontainer
 
 #warning "we assume that overlapper skipped dual mappings, minimap2 overlapping module skips by default"
 #warning "substring overlaps which are not suffix-prefix are ignored, may need to relax this later"
-void ovlgraph_gen(const char *readfilename, const char *paffilename, float min_ovlp_identity, int min_ovlp_len, int fuzz, 
+void ovlgraph_gen(const char *readfilename, const char *paffilename, float min_ovlp_identity, int min_ovlp_len, int fuzz,
     bool removeContainedReads, graphcontainer &g)
 {
   //read input paf file
@@ -355,7 +389,7 @@ void ovlgraph_gen(const char *readfilename, const char *paffilename, float min_o
           containmentTuple c;
           c.src = q_readId;
           c.dst = t_readId;
-          c.rev = r.rev;  
+          c.rev = r.rev;
           c.dst_start_offset = r.ts;
           c.dst_end_offset = r.te;
           g.containments.emplace_back(c);
@@ -498,14 +532,15 @@ void ovlgraph_gen(const char *readfilename, const char *paffilename, float min_o
 
   g.initVectors(readfilename);
   if (removeContainedReads) g.removeContainedReads();
-  g.index();
+  g.index(); //indexing is needed prior to transitive reduction
   if (fuzz != INT32_MAX)
     g.transitiveReduction (fuzz);
+  g.index(); //re-index
 }
 
 /**
- * suppose containment degree of a read equals the count of 
- * reads containing it; then the following function prints 
+ * suppose containment degree of a read equals the count of
+ * reads containing it; then the following function prints
  * distribution of containment degrees in the graph
  *
  * write to file ContainmentDegree.txt (overwrite if already exists)
@@ -517,7 +552,7 @@ void printContainmentDegreeDistribution (graphcontainer &g)
   for (uint32_t i = 0; i < g.readCount; i++)
     maxDegree = std::max (maxDegree, g.getContaintmentDegree(i));
 
-  std::vector<uint32_t> distribution(maxDegree+1, 0); 
+  std::vector<uint32_t> distribution(maxDegree+1, 0);
 
   for (uint32_t i = 0; i < g.readCount; i++)
     distribution[g.getContaintmentDegree(i)]++;
@@ -528,7 +563,7 @@ void printContainmentDegreeDistribution (graphcontainer &g)
 }
 
 /**
- * the following function prints 
+ * the following function prints
  * distribution of vertex out-degree in the graph
  * write to file Degree.txt (overwrite if already exists)
  * NOTE: deleted edges are not ignored
@@ -539,7 +574,7 @@ void printDegreeDistribution (graphcontainer &g)
   for (uint32_t i = 0; i < g.vertexCount; i++)
     maxDegree = std::max (maxDegree, g.getDegree(i));
 
-  std::vector<uint32_t> distribution(maxDegree+1, 0); 
+  std::vector<uint32_t> distribution(maxDegree+1, 0);
 
   for (uint32_t i = 0; i < g.vertexCount; i++)
     distribution[g.getDegree(i)]++;
