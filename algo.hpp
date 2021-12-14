@@ -1,7 +1,9 @@
 #ifndef ASM_ALGO_H
 #define ASM_ALGO_H
 
+#include <set>
 #include "common.hpp"
+
 
 
 struct algoParams
@@ -25,7 +27,7 @@ void computeMinimizersFromString(std::vector<uint32_t> &container, const std::st
 {
   assert (param.k >= 10 && param.k <= 16);
   assert (param.d > 0 && param.d <= 1.0);
-  assert (beg >= 0 && beg < str.length());
+  assert (beg >= 0 && beg <= str.length());
   assert (end >= beg && end <= str.length());
 
   if (end == beg)
@@ -53,10 +55,10 @@ void computeMinimizersFromString(std::vector<uint32_t> &container, const std::st
         kmer = (kmer >> 2) | (3U^c) << shift1;   // reverse k-mer
       l++;
 
-      if (l >= k)
+      if (l >= param.k)
       {
         hashkmer = hash32(kmer, mask) * 1.0 / UINT32_MAX;
-        if (hashkmer < d) container.emplace_back(kmer);
+        if (hashkmer < param.d) container.emplace_back(kmer);
       }
     }
     else {
@@ -66,39 +68,57 @@ void computeMinimizersFromString(std::vector<uint32_t> &container, const std::st
 }
 
 /**
- * @param[in] src_vertex  starting vertex
- * @param[in] start_pos   0-based, leftmost position in read string
+ * @param[in] src_vertex              starting vertex
+ * @param[in] beg                     0-based, leftmost position in the current read string
+ * @param[in] end                     1-based, end string processing here in the current read string
+ * @param[in] remaining_depth_bases   total count of bases to process during DFS
  */
-void dfs_procedure (graphcontainer &g, uint32_t src_vertex, uint32_t start_pos, uint32_t remaining_depth_bases, std::set<uint32_t> &visited_vertices, std::vector<uint32_t> &minimizers, const algoParams &param)
+uint32_t dfs_procedure (graphcontainer &g, uint32_t src_vertex, uint32_t beg, uint32_t end, uint32_t remaining_depth_bases, std::set<uint32_t> &visited_vertices, std::vector<uint32_t> &minimizers, const algoParams &param)
 {
-  if (remaining_depth_bases == 0) return;
-  if (visited_vertices.find(src_vertex) != visited_vertices.end()) return;
-  assert (src_vertex < g.vertexCount);
-
-  bool orientation = src_vertex & 1;
+  if (visited_vertices.find(src_vertex) != visited_vertices.end()) return 0U; //visited already
   uint32_t src_readid = src_vertex >> 1;
-  uint32_t beg = start_pos, end;
-  if (remaining_depth_bases > g.readseq[src_readid].length())
-  {
-    end = g.readseq[src_readid].length();
-    remaining_depth_bases = remaining_depth_bases - g.readseq[src_readid].length();
-  }
-  else
-  {
-    end = remaining_depth_bases;
-    remaining_depth_bases = 0;
-  }
 
+  assert (src_vertex < g.vertexCount);
+  assert (beg <= end);
   assert (end <= g.readseq[src_readid].length());
-  assert (beg < end);
+  assert (remaining_depth_bases >= end - beg); //this should be ensured before calling DFS
 
-  computeMinimizersFromString(minimizers, g.readseq[src_readid], beg, end, orientation, param);
+  uint32_t bases_processed = 0;
   visited_vertices.insert (src_vertex);
+  bool rev = src_vertex & 1; //orientation
 
-  if (remaining_depth_bases > 0)
-    for (uint32_t j = g.offsets[src_vertex]; j < g.offsets[src_vertex+1]; j++)
-      if (g.redundant[j] == false)
-        dfs_procedure (g, j, 0, remaining_depth_bases, visited_vertices, mmWalkRead, param);
+  computeMinimizersFromString(minimizers, g.readseq[src_readid], beg, end, rev, param);
+  bases_processed = end - beg;
+  remaining_depth_bases = remaining_depth_bases - bases_processed;
+
+  //move to neighbor vertices
+  if (remaining_depth_bases > 0) {
+    for (uint32_t j = g.offsets[src_vertex]; j < g.offsets[src_vertex+1]; j++) {
+      assert (g.edges[j].src == src_vertex);
+      uint32_t adjVertexId = g.edges[j].dst;
+      uint32_t adjReadId = adjVertexId >> 1;
+
+      if (g.redundant[adjReadId] == false)
+      {
+        //compute begin and end offsets for next read/vertex
+        uint32_t nextReadLen = g.readseq[adjReadId].length();
+        rev = adjVertexId & 1;
+
+        if (rev == false) //prefix
+        {
+          beg = 0;
+          end = std::min (nextReadLen, remaining_depth_bases);
+        }
+        else //suffix
+        {
+          end = nextReadLen;
+          beg = end - std::min (end, remaining_depth_bases);
+        }
+        bases_processed += dfs_procedure (g, adjVertexId, beg, end, remaining_depth_bases, visited_vertices, minimizers, param);
+      }
+    }
+  }
+  return bases_processed;
 }
 
 void identifyRedundantReads(graphcontainer &g, const algoParams &param)
@@ -108,40 +128,72 @@ void identifyRedundantReads(graphcontainer &g, const algoParams &param)
 
   std::vector<uint32_t> mmWalkRead; //walk along same orientation as the read, and collect minimizers
   std::vector<uint32_t> mmWalkParentReads; //collect minimizers by walking from parent reads containing the current read
-  //TODO: should we also walk in opposite direction?
+  std::set<uint32_t> visited_vertices;
 
   //TODO: reconsider if we should process contained reads in a particular order
   for (uint32_t i = 0; i < g.readCount; i++)
   {
+    assert (g.readseq[i].length() > 0);
+
     if (g.contained[i] == true && g.redundant[i] == false)
     {
       //confirm if parent reads are still available, otherwise nothing to do
       {
         uint32_t available_parent_count = 0;
-        for (uint32_t j = g.containment_offsets[i]; j < g.containment_offsets[i+1]; j++) {
-          if (g.redundant[j] == false)
+        for (uint32_t j = g.containment_offsets[i]; j < g.containment_offsets[i+1]; j++)
+          if (g.redundant[g.containments[j].dst] == false)
             available_parent_count++;
-        }
-        if (available_parent_count == 0)
-          continue;
+        if (available_parent_count == 0) continue;
       }
+
+      //user-specified depth during DFS in terms of count of bases
+      uint32_t depth_no_bases = param.depth * g.readseq[i].length();
 
       //collect minimizers by starting DFS from contained read
       {
-        assert (g.readseq[i].length() > 0);
-        uint32_t depth_no_bases = param.depth * g.readseq[i].length();
-        std::set<uint32_t> visited_vertices;
-        for (uint32_t j = g.offsets[i]; j < g.offsets[i+1]; j++)
-          if (g.redundant[j] == false)
-            dfs_procedure (g, j, 0, depth_no_bases, visited_vertices, mmWalkRead, param);
+        visited_vertices.clear();
+        uint32_t bases_processed, vertexId = i << 1 | 0; //forward orientation
+        //should we also walk in opposite orientation? //TODO
+
+        //set begin offset = end offset below to start collecting minimizers from adjacent vertices
+        bases_processed = dfs_procedure (g, vertexId, g.readseq[i].length(), g.readseq[i].length(), depth_no_bases, visited_vertices, mmWalkRead, param);
+
+        assert (bases_processed > 0);
       }
 
       //collect minimizers from parent reads
       {
+        visited_vertices.clear();
+        for (uint32_t j = g.containment_offsets[i]; j < g.containment_offsets[i+1]; j++) {
 
+          assert (g.containments[j].src == i);
+          uint32_t parentReadId = g.containments[j].dst;
+          uint32_t parentReadLen = g.readseq[parentReadId].length();
+
+          if (g.redundant[parentReadId] == false)
+          {
+            uint32_t revbit = (g.containments[j].rev == true) ? 1 : 0;
+            uint32_t bases_processed = 0, beg, end, parentVertexId = parentReadId << 31 | revbit;
+
+            if  (revbit == 0) {
+              //suffix
+              beg = g.containments[j].dst_end_offset;
+              end = std::min (parentReadLen, beg + depth_no_bases);
+            }
+            else {
+              //prefix
+              end = g.containments[j].dst_start_offset;
+              beg = end - std::min (end, depth_no_bases);
+            }
+            bases_processed = dfs_procedure (g, parentVertexId, beg, end, depth_no_bases, visited_vertices, mmWalkParentReads, param);
+            assert (bases_processed > 0);
+          }
+        }
       }
 
       //compare minimizer lists and decide
+      std::cerr << "INFO, identifyRedundantReads(), processing readid " << i << ", collected " << mmWalkRead.size() << " minimizers from contained read\n";
+      std::cerr << "INFO, identifyRedundantReads(), collected " << mmWalkParentReads.size() << " minimizers from parent reads\n";
     }
   }
 }

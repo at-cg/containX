@@ -16,7 +16,7 @@
                     |< ov_dst >|<---- len --->|
 
   * if a read x has a suffix-prefix overlap with another read y, arcs x->y and ~y -> ~x are saved
-  * vertex ids will be formed as (read id << 31 | orientation); therefore two vertices per read
+  * vertex ids will be formed as (read id << 1 | orientation); therefore two vertices per read
   * we will maintain edges sorted by key <src, len>
 */
 class graphArc
