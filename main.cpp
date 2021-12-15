@@ -56,7 +56,7 @@ int main(int argc, char *argv[])
 
   //printContainmentDegreeDistribution (g);
   //printDegreeDistribution (g);
-  printEdgesDOTFormat (g);
+  //printEdgesDOTFormat (g);
 
   {
     param.maxContainmentDegree = 5, param.depth = 5, param.k = 16;
