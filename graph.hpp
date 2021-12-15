@@ -294,7 +294,7 @@ class graphcontainer
       }
 
       edges = edges_new;
-      std::cerr << "INFO, removeContainedReadsAboveDegree(), " << edges.size() << " edges remain after marking all contained reads as redundant\n";
+      std::cerr << "INFO, removeContainedReadsAboveDegree(), " << edges.size() << " edges remain after marking the specified contained reads as redundant\n";
     }
 
     //algorithm motivated from Myers 2005
