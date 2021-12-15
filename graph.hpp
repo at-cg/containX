@@ -584,4 +584,19 @@ void printDegreeDistribution (graphcontainer &g)
   for (const auto &e : distribution) outFile << e << "\n";
 }
 
+/**
+ * the following function prints
+ * list of directed edges in the graph
+ * write to file edges.DOT (overwrite if already exists)
+ * NOTE: deleted edges or redundant vertices are not ignored
+ */
+void printEdgesDOTFormat (graphcontainer &g)
+{
+  std::ofstream outFile("edges.DOT");
+  outFile << "digraph overlaps {\n";
+  for (auto &e : g.edges)
+    outFile << e.src << " -> " << e.dst << ";\n";
+  outFile << "}";
+}
+
 #endif

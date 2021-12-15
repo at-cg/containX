@@ -35,6 +35,7 @@ void computeMinimizersFromString(std::vector<uint32_t> &container, const std::st
 
   //'U' is for integer literal of type unsigned int
   uint32_t shift1 = 2*(param.k - 1), mask = (1U<<2*param.k) - 1, kmer = 0;
+  if (param.k == 16) mask = UINT32_MAX; //corner case
   float hashkmer;
 
   for (uint32_t i = beg, l = 0; i < end; ++i) {
@@ -87,6 +88,8 @@ uint32_t dfs_procedure (graphcontainer &g, uint32_t src_vertex, uint32_t beg, ui
   visited_vertices.insert (src_vertex);
   bool rev = src_vertex & 1; //orientation
 
+  std::cerr << "INFO, dfs_procedure(), computing minimizers from read " << src_readid << ", vertex = " << src_vertex << ", offsets = [" << beg << "," << end << "), orientation = '" << "+-"[rev] << "'\n";
+
   computeMinimizersFromString(minimizers, g.readseq[src_readid], beg, end, rev, param);
   bases_processed = end - beg;
   remaining_depth_bases = remaining_depth_bases - bases_processed;
@@ -104,14 +107,14 @@ uint32_t dfs_procedure (graphcontainer &g, uint32_t src_vertex, uint32_t beg, ui
         uint32_t nextReadLen = g.readseq[adjReadId].length();
         rev = adjVertexId & 1;
 
-        if (rev == false) //prefix
+        if (rev == false)
         {
-          beg = 0;
-          end = std::min (nextReadLen, remaining_depth_bases);
+          beg = g.edges[j].ov_dst; //skip overlapping portion
+          end = std::min (nextReadLen, beg + remaining_depth_bases);
         }
-        else //suffix
+        else
         {
-          end = nextReadLen;
+          end = nextReadLen - g.edges[j].ov_dst; //skip overlapping portion
           beg = end - std::min (end, remaining_depth_bases);
         }
         bases_processed += dfs_procedure (g, adjVertexId, beg, end, remaining_depth_bases, visited_vertices, minimizers, param);
@@ -134,12 +137,14 @@ void identifyRedundantReads(graphcontainer &g, const algoParams &param)
   for (uint32_t i = 0; i < g.readCount; i++)
   {
     assert (g.readseq[i].length() > 0);
+    uint32_t available_parent_count = 0;
+    mmWalkRead.clear();
+    mmWalkParentReads.clear();
 
     if (g.contained[i] == true && g.redundant[i] == false)
     {
       //confirm if parent reads are still available, otherwise nothing to do
       {
-        uint32_t available_parent_count = 0;
         for (uint32_t j = g.containment_offsets[i]; j < g.containment_offsets[i+1]; j++)
           if (g.redundant[g.containments[j].dst] == false)
             available_parent_count++;
@@ -161,6 +166,8 @@ void identifyRedundantReads(graphcontainer &g, const algoParams &param)
 
         assert (bases_processed > 0);
       }
+
+      std::cerr << "INFO, identifyRedundantReads(), processed readid " << i << ", collected " << mmWalkRead.size() << " minimizers from contained read\n";
 
       //collect minimizers from parent reads
       {
@@ -192,9 +199,36 @@ void identifyRedundantReads(graphcontainer &g, const algoParams &param)
         }
       }
 
+      std::cerr << "INFO, identifyRedundantReads(), collected " << mmWalkParentReads.size() << " minimizers from " << available_parent_count << " parent reads\n";
+
       //compare minimizer lists and decide
-      std::cerr << "INFO, identifyRedundantReads(), processing readid " << i << ", collected " << mmWalkRead.size() << " minimizers from contained read\n";
-      std::cerr << "INFO, identifyRedundantReads(), collected " << mmWalkParentReads.size() << " minimizers from parent reads\n";
+      std::sort (mmWalkRead.begin(), mmWalkRead.end());
+      std::sort (mmWalkParentReads.begin(), mmWalkParentReads.end());
+
+      auto it1 = mmWalkRead.begin(), it2 = mmWalkParentReads.begin();
+
+      uint32_t countCommon = 0;
+      while (it1 != mmWalkRead.end() && it2 != mmWalkParentReads.end())
+      {
+        if (*it1 == *it2) {
+          countCommon++;
+          it1++; it2++;
+        }
+        else if (*it1 < *it2)
+          it1++;
+        else if (*it2 < *it1)
+          it2++;
+      }
+
+      assert (countCommon <= mmWalkRead.size());
+      assert (countCommon <= mmWalkParentReads.size());
+
+      std::cerr << "INFO, identifyRedundantReads(), contained readid " << i << ", " << countCommon << " minimizers are discovered through parents out of total count " << mmWalkRead.size() << "\n";
+
+      if (1.0 * countCommon / mmWalkRead.size() >= param.cutoff) {
+        g.redundant[i] = true;
+        std::cerr << "INFO, identifyRedundantReads(), contained readid " << i << " is marked as redundant\n";
+      }
     }
   }
 }

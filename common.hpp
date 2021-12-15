@@ -1,6 +1,9 @@
 #ifndef SEQ_COMMON_H
 #define SEQ_COMMON_H
 
+//convert DNA (or RNA) ASCII characters to 2 bit numbers
+//A->0, C->1, G-> 2, T->3, U->3
+//a->0, c->1, g-> 2, t->3, u->3
 unsigned char seq_nt4_table[256] = {
 	0, 1, 2, 3,  4, 4, 4, 4,  4, 4, 4, 4,  4, 4, 4, 4,
 	4, 4, 4, 4,  4, 4, 4, 4,  4, 4, 4, 4,  4, 4, 4, 4,
