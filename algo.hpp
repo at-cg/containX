@@ -152,7 +152,8 @@ void identifyRedundantReads(graphcontainer &g, const algoParams &param)
       //collect minimizers by starting DFS from contained read
       {
         visited_vertices.clear();
-        uint32_t bases_processed, vertexId = i << 1 | 0; //forward orientation
+        uint32_t bases_processed;
+        uint32_t vertexId = i << 1 | 0; //forward orientation
         //should we also walk in opposite orientation? //TODO
 
         //set begin offset = end offset below to start collecting minimizers from adjacent vertices
@@ -172,8 +173,8 @@ void identifyRedundantReads(graphcontainer &g, const algoParams &param)
 
           if (g.redundant[parentReadId] == false)
           {
-            uint32_t revbit = (g.containments[j].rev == true) ? 1 : 0;
-            uint32_t bases_processed = 0, beg, end, parentVertexId = parentReadId << 31 | revbit;
+            uint32_t revbit = (g.containments[j].rev == true) ? 1U : 0U;
+            uint32_t bases_processed = 0, beg, end, parentVertexId = parentReadId << 1 | revbit;
 
             if  (revbit == 0) {
               //suffix
