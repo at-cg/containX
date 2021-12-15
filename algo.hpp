@@ -163,8 +163,6 @@ void identifyRedundantReads(graphcontainer &g, const algoParams &param)
 
         //set begin offset = end offset below to start collecting minimizers from adjacent vertices
         bases_processed = dfs_procedure (g, vertexId, g.readseq[i].length(), g.readseq[i].length(), depth_no_bases, visited_vertices, mmWalkRead, param);
-
-        assert (bases_processed > 0);
       }
 
       std::cerr << "INFO, identifyRedundantReads(), processed readid " << i << ", collected " << mmWalkRead.size() << " minimizers from contained read\n";
@@ -194,7 +192,6 @@ void identifyRedundantReads(graphcontainer &g, const algoParams &param)
               beg = end - std::min (end, depth_no_bases);
             }
             bases_processed = dfs_procedure (g, parentVertexId, beg, end, depth_no_bases, visited_vertices, mmWalkParentReads, param);
-            assert (bases_processed > 0);
           }
         }
       }
@@ -225,7 +222,7 @@ void identifyRedundantReads(graphcontainer &g, const algoParams &param)
 
       std::cerr << "INFO, identifyRedundantReads(), contained readid " << i << ", " << countCommon << " minimizers are discovered through parents out of total count " << mmWalkRead.size() << "\n";
 
-      if (1.0 * countCommon / mmWalkRead.size() >= param.cutoff) {
+      if (mmWalkRead.size() > 0 && 1.0 * countCommon / mmWalkRead.size() >= param.cutoff) {
         g.redundant[i] = true;
         std::cerr << "INFO, identifyRedundantReads(), contained readid " << i << " is marked as redundant\n";
       }
