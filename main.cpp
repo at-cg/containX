@@ -14,10 +14,10 @@ int main(int argc, char *argv[])
   int c;
   std::string gfadumpfilename;
   bool printReadStrings = true;
-  int fuzz = INT32_MAX;
   bool removeAllContainedReads = false;
   algoParams param;
   param.hpc = false;
+  param.fuzz = UINT32_MAX; //disable transitive reduction of edges by default
 
   while ((c = ketopt(&o, argc, argv, 1, "l:i:d:D:t:cH", 0)) >= 0)
   {
@@ -25,7 +25,7 @@ int main(int argc, char *argv[])
     else if (c == 'l') min_ovlp_len = atoi(o.arg);
     else if (c == 'd') gfadumpfilename = o.arg;
     else if (c == 'D') gfadumpfilename = o.arg, printReadStrings = false;
-    else if (c == 't') fuzz = atoi(o.arg);
+    else if (c == 't') param.fuzz = atoi(o.arg);
     else if (c == 'c') removeAllContainedReads = true;
     else if (c == 'H') param.hpc = true;
   }
@@ -46,24 +46,32 @@ int main(int argc, char *argv[])
 
   assert (min_ovlp_identity >= 0.0);
   assert (min_ovlp_identity <= 100.0);
-  assert (fuzz >= 0);
+
+  //set parameters
+  param.maxContainmentDegree = 5, param.depth = 5, param.k = 16;
+  param.d = 1.0/param.k, param.cutoff = 0.95;
 
   graphcontainer g;
-  ovlgraph_gen (argv[o.ind], argv[o.ind+1], min_ovlp_identity, min_ovlp_len, fuzz, removeAllContainedReads, g);
+  ovlgraph_gen (argv[o.ind], argv[o.ind+1], min_ovlp_identity, min_ovlp_len, g);
+
+#ifdef VERBOSE
+  printContainmentDegreeDistribution (g, "ContainmentDegree.beforeSimplify.txt");
+  printDegreeDistribution (g, "Degree.beforeSimplify.txt");
+  printEdgesDOTFormat (g, "edges.beforeSimplify.DOT");
+#endif
+
+  ovlgraph_simplify (removeAllContainedReads, g, param);
+
+
+#ifdef VERBOSE
+  printContainmentDegreeDistribution (g, "ContainmentDegree.afterSimplify.txt");
+  printDegreeDistribution (g, "Degree.afterSimplify.txt");
+  printEdgesDOTFormat (g, "edges.afterSimplify.DOT");
+#endif
 
   if (!gfadumpfilename.empty())
     g.outputGFA (gfadumpfilename, printReadStrings);
 
-  //printContainmentDegreeDistribution (g);
-  //printDegreeDistribution (g);
-  //printEdgesDOTFormat (g);
-
-  {
-    param.maxContainmentDegree = 5, param.depth = 5, param.k = 16;
-    param.d = 1.0/param.k, param.cutoff = 1.0;
-  }
-
-  identifyRedundantReads (g, param);
 
   //log complete command given by user
   fprintf(stderr, "INFO, %s(), CMD:", __func__);

@@ -103,17 +103,11 @@ class graphcontainer
       redundant.resize(readCount, false);
       readseq.resize(readCount, "");
 
-
       for (auto &e : containments)
         contained[e.src] = true;
 
-      std::cerr << "INFO, initVectors(), graph has " << edges.size() << " edges\n";
-      std::cerr << "INFO, initVectors(), graph has " << vertexCount << " vertices from " << readCount << " reads in total\n";
-      std::cerr << "INFO, initVectors(), " << std::count(contained.begin(), contained.end(), true) << " reads are marked as contained in graph\n";
-
       //parse reads
       {
-        std::cerr << "INFO, initVectors(), parsing reads from " << readfilename << "\n";
         int l;
         gzFile fp;
         kseq_t *seq;
@@ -130,6 +124,15 @@ class graphcontainer
         kseq_destroy(seq);
         gzclose(fp);
       }
+      std::cerr << "INFO, initVectors(), parsed reads from " << readfilename << "\n";
+    }
+
+    void printGraphStats ()
+    {
+      std::cerr << "INFO, printGraphStats(), graph has " << edges.size() << " edges\n";
+      std::cerr << "INFO, printGraphStats(), graph has " << vertexCount << " vertices from " << readCount << " reads in total\n";
+      std::cerr << "INFO, printGraphStats(), " << std::count(contained.begin(), contained.end(), true) << " reads are marked as contained in graph\n";
+      std::cerr << "INFO, printGraphStats(), " << std::count(redundant.begin(), redundant.end(), true) << " reads are marked as redundant in graph\n";
     }
 
     //index edges and containments
@@ -273,7 +276,8 @@ class graphcontainer
       }
 
       edges = edges_new;
-      std::cerr << "INFO, removeContainedReads(), " << edges.size() << " edges remain after marking all contained reads as redundant\n";
+      std::cerr << "INFO, removeContainedReads() finished\n";
+      printGraphStats();
     }
 
     //consider contained reads as redundant if their
@@ -294,7 +298,8 @@ class graphcontainer
       }
 
       edges = edges_new;
-      std::cerr << "INFO, removeContainedReadsAboveDegree(), " << edges.size() << " edges remain after marking the specified contained reads as redundant\n";
+      std::cerr << "INFO, removeContainedReadsAboveDegree() finished\n";
+      printGraphStats();
     }
 
     //algorithm motivated from Myers 2005
@@ -348,7 +353,7 @@ class graphcontainer
         }
       }
 
-      std::cerr << "INFO, transitiveReduction(), reduced " << n_reduced << " edges\n";
+      std::cerr << "INFO, transitiveReduction(), " << n_reduced << " edges marked for deletion\n";
 
       return n_reduced;
     }
@@ -356,8 +361,7 @@ class graphcontainer
 
 #warning "we assume that overlapper skipped dual mappings, minimap2 overlapping module skips by default"
 #warning "substring overlaps which are not suffix-prefix are ignored, may need to relax this later"
-void ovlgraph_gen(const char *readfilename, const char *paffilename, float min_ovlp_identity, int min_ovlp_len, int fuzz,
-    bool removeContainedReads, graphcontainer &g)
+void ovlgraph_gen(const char *readfilename, const char *paffilename, float min_ovlp_identity, int min_ovlp_len, graphcontainer &g)
 {
   //read input paf file
   paf_rec_t r;
@@ -529,24 +533,18 @@ void ovlgraph_gen(const char *readfilename, const char *paffilename, float min_o
   std::for_each(g.edges.begin(), g.edges.end(), [](graphArc &e){e.del = false;});
   g.min_ovlp_len = min_ovlp_len;
   g.min_ovlp_identity = min_ovlp_identity;
-
   g.initVectors(readfilename);
-  if (removeContainedReads) g.removeContainedReads();
-  g.index(); //indexing is needed prior to transitive reduction
-  if (fuzz != INT32_MAX)
-    g.transitiveReduction (fuzz);
-  g.index(); //re-index
+  g.index();
+  g.printGraphStats();
+  std::cerr << "INFO, ovlgraph_gen() finished\n";
 }
 
 /**
  * suppose containment degree of a read equals the count of
  * reads containing it; then the following function prints
  * distribution of containment degrees in the graph
- *
- * write to file ContainmentDegree.txt (overwrite if already exists)
- * NOTE: redundant reads are not ignored
  */
-void printContainmentDegreeDistribution (graphcontainer &g)
+void printContainmentDegreeDistribution (graphcontainer &g, const std::string &filename)
 {
   uint32_t maxDegree = 0;
   for (uint32_t i = 0; i < g.readCount; i++)
@@ -555,10 +553,11 @@ void printContainmentDegreeDistribution (graphcontainer &g)
   std::vector<uint32_t> distribution(maxDegree+1, 0);
 
   for (uint32_t i = 0; i < g.readCount; i++)
-    distribution[g.getContaintmentDegree(i)]++;
+    if (g.redundant[i] == false)
+      distribution[g.getContaintmentDegree(i)]++;
 
   //write to file
-  std::ofstream outFile("ContainmentDegree.txt");
+  std::ofstream outFile(filename);
   for (const auto &e : distribution) outFile << e << "\n";
 }
 
@@ -566,9 +565,8 @@ void printContainmentDegreeDistribution (graphcontainer &g)
  * the following function prints
  * distribution of vertex out-degree in the graph
  * write to file Degree.txt (overwrite if already exists)
- * NOTE: deleted edges are not ignored
  */
-void printDegreeDistribution (graphcontainer &g)
+void printDegreeDistribution (graphcontainer &g, const std::string &filename)
 {
   uint32_t maxDegree = 0;
   for (uint32_t i = 0; i < g.vertexCount; i++)
@@ -577,10 +575,11 @@ void printDegreeDistribution (graphcontainer &g)
   std::vector<uint32_t> distribution(maxDegree+1, 0);
 
   for (uint32_t i = 0; i < g.vertexCount; i++)
-    distribution[g.getDegree(i)]++;
+    if (g.redundant[i>>1] == false)
+      distribution[g.getDegree(i)]++;
 
   //write to file
-  std::ofstream outFile("Degree.txt");
+  std::ofstream outFile(filename);
   for (const auto &e : distribution) outFile << e << "\n";
 }
 
@@ -588,15 +587,15 @@ void printDegreeDistribution (graphcontainer &g)
  * the following function prints
  * list of directed edges in the graph
  * write to file edges.DOT (overwrite if already exists)
- * NOTE: deleted edges or redundant vertices are not ignored
  */
-void printEdgesDOTFormat (graphcontainer &g)
+void printEdgesDOTFormat (graphcontainer &g, const std::string &filename)
 {
-  std::ofstream outFile("edges.DOT");
+  std::ofstream outFile(filename);
   outFile << "digraph overlaps {\n";
   for (auto &e : g.edges)
-    outFile << e.src << " -> " << e.dst << ";\n";
-  outFile << "}";
+    if (g.redundant[e.src >>1] == false && g.redundant[e.dst >>1] == false && e.del == false)
+      outFile << e.src << " -> " << e.dst << ";\n";
+  outFile << "}\n";
 }
 
 #endif
