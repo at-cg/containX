@@ -18,8 +18,9 @@ int main(int argc, char *argv[])
   algoParams param;
   param.hpc = false;
   param.fuzz = UINT32_MAX; //disable transitive reduction of edges by default
+  param.cutoff = 0.8;
 
-  while ((c = ketopt(&o, argc, argv, 1, "l:i:d:D:t:cH", 0)) >= 0)
+  while ((c = ketopt(&o, argc, argv, 1, "l:i:d:D:t:cHm:", 0)) >= 0)
   {
     if (c == 'i') min_ovlp_identity = atof(o.arg);
     else if (c == 'l') min_ovlp_len = atoi(o.arg);
@@ -28,6 +29,7 @@ int main(int argc, char *argv[])
     else if (c == 't') param.fuzz = atoi(o.arg);
     else if (c == 'c') removeAllContainedReads = true;
     else if (c == 'H') param.hpc = true;
+    else if (c == 'm') param.cutoff = atof(o.arg);
   }
 
   //print usage
@@ -36,6 +38,7 @@ int main(int argc, char *argv[])
     std::cerr << "Options:\n";
     std::cerr << "  -l NUM      min overlap length, default " << min_ovlp_len << "\n";
     std::cerr << "  -i NUM      min overlap percentage identity [0.0-100.0], default " << min_ovlp_identity << "\n";
+    std::cerr << "  -m NUM      min fraction of minimizer matches for redundant contained reads, default " << param.cutoff << "\n";
     std::cerr << "  -H          use homopolymer-compressed k-mer\n";
     std::cerr << "  -c          mark all contained reads as redundant and remove\n";
     std::cerr << "  -t NUM      enable transitive reduction using given fuzz, disabled by default\n";
@@ -49,7 +52,9 @@ int main(int argc, char *argv[])
 
   //set parameters
   param.maxContainmentDegree = 5, param.depth = 5, param.k = 16;
-  param.d = 1.0/param.k, param.cutoff = 0.95;
+  param.d = 1.0/param.k;
+  param.iter = 5;
+  param.printParams();
 
   graphcontainer g;
   ovlgraph_gen (argv[o.ind], argv[o.ind+1], min_ovlp_identity, min_ovlp_len, g);
