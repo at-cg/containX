@@ -23,8 +23,8 @@ int main(int argc, char *argv[])
   {
     if (c == 'i') min_ovlp_identity = atof(o.arg);
     else if (c == 'l') min_ovlp_len = atoi(o.arg);
-    else if (c == 'd') gfadumpfilename = o.arg;
-    else if (c == 'D') gfadumpfilename = o.arg, printReadStrings = false;
+    else if (c == 'd') gfadumpfilename = o.arg, printReadStrings = false;
+    else if (c == 'D') gfadumpfilename = o.arg;
     else if (c == 't') param.fuzz = atoi(o.arg);
     else if (c == 'c') removeAllContainedReads = true;
     else if (c == 'H') param.hpc = true;
@@ -40,7 +40,7 @@ int main(int argc, char *argv[])
     std::cerr << "  -c          mark all contained reads as redundant and remove\n";
     std::cerr << "  -t NUM      enable transitive reduction using given fuzz, disabled by default\n";
     std::cerr << "  -d FILE     dump graph in gfa format\n";
-    std::cerr << "  -D FILE     dump graph in gfa format without sequences\n";
+    std::cerr << "  -D FILE     dump graph in gfa format with sequences\n";
     return 1;
   }
 
