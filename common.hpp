@@ -24,7 +24,7 @@ unsigned char seq_nt4_table[256] = {
 };
 
 //From https://gist.github.com/badboy/6267743#64-bit-mix-functions
-static inline uint64_t hash64(uint64_t key, uint64_t mask)
+uint64_t hash64(uint64_t key, uint64_t mask)
 {
   key = (~key + (key << 21)) & mask; // key = (key << 21) - key - 1;
   key = key ^ key >> 24;
@@ -37,7 +37,7 @@ static inline uint64_t hash64(uint64_t key, uint64_t mask)
 }
 
 //From https://gist.github.com/badboy/6267743#32-bit-mix-functions
-static inline uint32_t hash32(uint32_t key, uint32_t mask)
+uint32_t hash32(uint32_t key, uint32_t mask)
 {
   key = (~key + (key << 15)) & mask; // key = (key << 15) - key - 1;
   key = key ^ (key >> 12);
@@ -46,6 +46,19 @@ static inline uint32_t hash32(uint32_t key, uint32_t mask)
   key = (key * 2057) & mask; // key = (key + (key << 3)) + (key << 11);
   key = key ^ (key >> 16);
   return key;
+}
+
+//Build inverse of unordered_map (assuming it is injective fn)
+template<typename K, typename V>
+void inverse_map (const std::unordered_map<K, V> &map, std::unordered_map<V, K> &inv)
+{
+  assert (inv.size() == 0);
+  std::for_each(map.begin(), map.end(),
+      [&inv] (const std::pair<K, V> &p) {
+        assert (inv.find(p.second) == inv.end()); //key does not exist already
+        inv.insert(std::make_pair(p.second, p.first));
+      });
+  assert (inv.size() == map.size());
 }
 
 

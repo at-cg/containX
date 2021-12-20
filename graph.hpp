@@ -7,6 +7,7 @@
 #include <vector>
 #include <fstream>
 #include "paf.hpp"
+#include "common.hpp"
 
 /*
                     |< ov_src >|
@@ -60,14 +61,19 @@ class graphcontainer
 
     uint32_t readCount;
     uint32_t vertexCount;       //twice of readCount
+
+    //hash: read id -> number
     std::unordered_map <std::string, uint32_t> umap;  // size = count of reads
+    //inverse hash: number -> read id
+    std::unordered_map <uint32_t, std::string> umap_inverse;  // size = count of reads
+    //read sequences
     std::vector<std::string> readseq;  //size = count of reads
     std::vector<bool> contained; //size = count of reads
     std::vector<bool> redundant;   //size = count of reads
     std::vector<graphArc> edges; //size = 2 x suffix-prefix overlaps
-    std::vector<uint32_t> offsets; //for CSR format
+    std::vector<uint32_t> offsets; //for CSR-style indexing
     std::vector<containmentTuple> containments; //size = count of contained overlaps
-    std::vector<uint32_t> containment_offsets; //for CSR format
+    std::vector<uint32_t> containment_offsets; //for CSR-style indexing
 
     //save user thresholds
     float min_ovlp_identity;
@@ -102,6 +108,7 @@ class graphcontainer
       contained.resize(readCount, false);
       redundant.resize(readCount, false);
       readseq.resize(readCount, "");
+      inverse_map (umap, umap_inverse); //build inverse
 
       for (auto &e : containments)
         contained[e.src] = true;
@@ -260,8 +267,25 @@ class graphcontainer
       }
     }
 
+    /**
+     * print read ids which are contained but not redundant
+     */
+    void outputNonRedudantContainedReads (const std::string &filename)
+    {
+      std::ofstream outstrm (filename);
+
+      for (auto &e : umap)
+      {
+        uint32_t i = e.second; //read id
+        //print original read id
+        if (contained[i] == true && redundant[i] == false) {
+            outstrm  << e.first << "\n";
+        }
+      }
+    }
+
     //consider all contained reads as redundant and remove them from graph
-    void removeContainedReads()
+    void removeContainedReads(std::ofstream &log)
     {
       for (uint32_t i = 0; i < readCount; i++)
         redundant[i] = contained[i];
@@ -282,7 +306,7 @@ class graphcontainer
 
     //consider contained reads as redundant if their
     //'containment degree' is > maxDegree
-    void removeContainedReadsAboveDegree(uint32_t maxDegree)
+    void removeContainedReadsAboveDegree(uint32_t maxDegree, std::ofstream &log)
     {
       for (uint32_t i = 0; i < readCount; i++)
         if (getContaintmentDegree (i) > maxDegree)

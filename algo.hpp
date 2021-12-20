@@ -11,7 +11,6 @@ struct algoParams
   uint32_t depth;                 //how far to traverse while collecting minimizers, factor of read length
   uint32_t k;                     //k-mer length (<=16)
   uint32_t fuzz;                  //fuzz parameter for transitive reduction (Myers 2005)
-  uint32_t iter;                  //count of iterations
   float d;                        //[0,1] sampling density
   float cutoff;                   //what fraction of minimizers must match for redundancy
   bool hpc;                       //parse k-mers in homopolymer compressed space
@@ -22,7 +21,6 @@ struct algoParams
     std::cerr << "INFO, printParams(), depth = " << depth << "\n";
     std::cerr << "INFO, printParams(), k = " << k << "\n";
     std::cerr << "INFO, printParams(), fuzz = " << fuzz << "\n";
-    std::cerr << "INFO, printParams(), iter = " << iter << "\n";
     std::cerr << "INFO, printParams(), d (density) = " << d << "\n";
     std::cerr << "INFO, printParams(), cutoff = " << cutoff << "\n";
     std::cerr << "INFO, printParams(), hpc = " << std::boolalpha << hpc << "\n";
@@ -139,11 +137,8 @@ uint32_t dfs_procedure (graphcontainer &g, uint32_t src_vertex, uint32_t beg, ui
   return bases_processed;
 }
 
-void identifyRedundantReads(graphcontainer &g, const algoParams &param)
+void identifyRedundantReads(graphcontainer &g, const algoParams &param, std::ofstream& log)
 {
-  g.removeContainedReadsAboveDegree (param.maxContainmentDegree);
-  g.index();
-
   std::vector<uint32_t> mmWalkRead; //walk along same orientation as the read, and collect minimizers
   std::vector<uint32_t> mmWalkParentReads; //collect minimizers by walking from parent reads containing the current read
   std::set<uint32_t> visited_vertices;
@@ -260,7 +255,7 @@ void identifyRedundantReads(graphcontainer &g, const algoParams &param)
  * 0 out-degree or 0 in-degree
  * in-degree is approximated from out-degree of reverse read
  */
-void pruneEndContainedReads(graphcontainer &g)
+void pruneEndContainedReads(graphcontainer &g, std::ofstream& log)
 {
   for (uint32_t i = 0; i < g.readCount; i++)
   {
@@ -276,10 +271,11 @@ void pruneEndContainedReads(graphcontainer &g)
 /**
  * @param[in]   removeContainedReads      simply mark all contained reads as redundant
  */
-void ovlgraph_simplify (bool removeContainedReads, graphcontainer &g, const algoParams &param)
+void ovlgraph_simplify (bool removeContainedReads, graphcontainer &g, const algoParams &param, const std::string &logfilename)
 {
-  if (removeContainedReads) g.removeContainedReads();
+  std::ofstream logFile (logfilename);
 
+  if (removeContainedReads) g.removeContainedReads (logFile);
   g.index(); //indexing is needed prior to transitive reduction
   if (param.fuzz != INT32_MAX)
     g.transitiveReduction (param.fuzz);
@@ -288,14 +284,23 @@ void ovlgraph_simplify (bool removeContainedReads, graphcontainer &g, const algo
   //check redundancy of contained reads
   if (!removeContainedReads)
   {
-    for (uint32_t i = 0; i < param.iter; i++) {
+    g.removeContainedReadsAboveDegree (param.maxContainmentDegree, logFile);
+    g.index();
+
+    while (true)
+    {
+      std::size_t countRedundantReads = std::count(g.redundant.begin(), g.redundant.end(), true);
+
       g.printGraphStats();
-      identifyRedundantReads (g, param);
+      identifyRedundantReads (g, param, logFile);
       g.index(); //re-index
 
       g.printGraphStats();
-      pruneEndContainedReads(g);
+      pruneEndContainedReads(g, logFile);
       g.index(); //re-index
+
+      if (std::count(g.redundant.begin(), g.redundant.end(), true) == countRedundantReads)
+        break;
     }
   }
 

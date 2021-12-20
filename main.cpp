@@ -13,6 +13,7 @@ int main(int argc, char *argv[])
   int min_ovlp_len = 0;
   int c;
   std::string gfadumpfilename;
+  std::string dumpNonRedudantContainedReads;
   bool printReadStrings = true;
   bool removeAllContainedReads = false;
   algoParams param;
@@ -20,12 +21,13 @@ int main(int argc, char *argv[])
   param.fuzz = UINT32_MAX; //disable transitive reduction of edges by default
   param.cutoff = 0.8;
 
-  while ((c = ketopt(&o, argc, argv, 1, "l:i:d:D:t:cHm:", 0)) >= 0)
+  while ((c = ketopt(&o, argc, argv, 1, "cd:D:Hi:l:m:n:t:", 0)) >= 0)
   {
     if (c == 'i') min_ovlp_identity = atof(o.arg);
     else if (c == 'l') min_ovlp_len = atoi(o.arg);
     else if (c == 'd') gfadumpfilename = o.arg, printReadStrings = false;
     else if (c == 'D') gfadumpfilename = o.arg;
+    else if (c == 'n') dumpNonRedudantContainedReads = o.arg;
     else if (c == 't') param.fuzz = atoi(o.arg);
     else if (c == 'c') removeAllContainedReads = true;
     else if (c == 'H') param.hpc = true;
@@ -42,7 +44,8 @@ int main(int argc, char *argv[])
     std::cerr << "  -H          use homopolymer-compressed k-mer\n";
     std::cerr << "  -c          mark all contained reads as redundant and remove\n";
     std::cerr << "  -t NUM      enable transitive reduction using given fuzz, disabled by default\n";
-    std::cerr << "  -d FILE     dump graph in gfa format\n";
+    std::cerr << "  -n FILE     dump read ids of non-redundant contained reads\n";
+    std::cerr << "  -d FILE     dump graph in gfa format without sequences\n";
     std::cerr << "  -D FILE     dump graph in gfa format with sequences\n";
     return 1;
   }
@@ -53,7 +56,6 @@ int main(int argc, char *argv[])
   //set parameters
   param.maxContainmentDegree = 5, param.depth = 5, param.k = 16;
   param.d = 1.0/param.k;
-  param.iter = 5;
   param.printParams();
 
   graphcontainer g;
@@ -65,7 +67,7 @@ int main(int argc, char *argv[])
   printEdgesDOTFormat (g, "edges.beforeSimplify.DOT");
 #endif
 
-  ovlgraph_simplify (removeAllContainedReads, g, param);
+  ovlgraph_simplify (removeAllContainedReads, g, param, "log_simplify.txt");
 
 
 #ifdef VERBOSE
@@ -76,6 +78,9 @@ int main(int argc, char *argv[])
 
   if (!gfadumpfilename.empty())
     g.outputGFA (gfadumpfilename, printReadStrings);
+
+  if (!dumpNonRedudantContainedReads.empty())
+    g.outputNonRedudantContainedReads (dumpNonRedudantContainedReads);
 
 
   //log complete command given by user
