@@ -287,8 +287,12 @@ class graphcontainer
     //consider all contained reads as redundant and remove them from graph
     void removeContainedReads(std::ofstream &log)
     {
-      for (uint32_t i = 0; i < readCount; i++)
-        redundant[i] = contained[i];
+      for (uint32_t i = 0; i < readCount; i++) {
+        if (redundant[i] == false && contained[i] == true) {
+          redundant[i] = true;
+          log << umap_inverse[i] << "\tremoveContainedReads()\n";
+        }
+      }
 
       std::vector<graphArc> edges_new;
 
@@ -308,9 +312,13 @@ class graphcontainer
     //'containment degree' is > maxDegree
     void removeContainedReadsAboveDegree(uint32_t maxDegree, std::ofstream &log)
     {
-      for (uint32_t i = 0; i < readCount; i++)
-        if (getContaintmentDegree (i) > maxDegree)
-          redundant[i] = contained[i];
+      for (uint32_t i = 0; i < readCount; i++) {
+        if (getContaintmentDegree (i) > maxDegree && redundant[i] == false && contained[i] == true) {
+          redundant[i] = true;
+          log << umap_inverse[i] << "\tremoveContainedReadsAboveDegree()\n";
+        }
+      }
+
 
       std::vector<graphArc> edges_new;
 

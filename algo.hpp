@@ -234,15 +234,17 @@ void identifyRedundantReads(graphcontainer &g, const algoParams &param, std::ofs
       assert (countCommon <= mmWalkRead.size());
       assert (countCommon <= mmWalkParentReads.size());
 
-#ifdef VERBOSE
-      std::cerr << "INFO, identifyRedundantReads(), contained readid " << i << ", " << countCommon << " minimizers are discovered through parents out of total count " << mmWalkRead.size() << "\n";
-#endif
 
       if (mmWalkRead.size() > 0 && 1.0 * countCommon / mmWalkRead.size() >= param.cutoff) {
         g.redundant[i] = true;
-#ifdef VERBOSE
-        std::cerr << "INFO, identifyRedundantReads(), contained readid " << i << " is marked as redundant\n";
-#endif
+
+        log << g.umap_inverse[i] << "\tidentifyRedundantReads()\tPARENTS=";
+        for (uint32_t j = g.containment_offsets[i]; j < g.containment_offsets[i+1]; j++) {
+          uint32_t parentReadId = g.containments[j].dst;
+          if (g.redundant[parentReadId] == false)
+            log << g.umap_inverse[parentReadId] << ", ";
+        }
+        log << "\t" << countCommon << "/" << mmWalkRead.size() << ":" << mmWalkParentReads.size() << "\n";
       }
     }
   }
@@ -261,8 +263,10 @@ void pruneEndContainedReads(graphcontainer &g, std::ofstream& log)
   {
     if (g.contained[i] == true && g.redundant[i] == false)
     {
-      if (g.getDegree (i << 1 | 1) == 0 || g.getDegree (i << 1 | 0) == 0)
+      if (g.getDegree (i << 1 | 1) == 0 || g.getDegree (i << 1 | 0) == 0) {
         g.redundant[i] = true;
+        log << g.umap_inverse[i] << "\tpruneEndContainedReads()\n";
+      }
     }
   }
   std::cerr << "INFO, pruneEndContainedReads() finished\n";
