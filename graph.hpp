@@ -305,7 +305,6 @@ class graphcontainer
 
       edges = edges_new;
       std::cerr << "INFO, removeContainedReads() finished\n";
-      printGraphStats();
     }
 
     //consider contained reads as redundant if their
@@ -331,7 +330,6 @@ class graphcontainer
 
       edges = edges_new;
       std::cerr << "INFO, removeContainedReadsAboveDegree() finished\n";
-      printGraphStats();
     }
 
     //algorithm motivated from Myers 2005

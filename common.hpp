@@ -61,5 +61,4 @@ void inverse_map (const std::unordered_map<K, V> &map, std::unordered_map<V, K> 
   assert (inv.size() == map.size());
 }
 
-
 #endif
