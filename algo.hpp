@@ -202,6 +202,8 @@ void identifyRedundantReads(graphcontainer &g, const algoParams &param, std::ofs
       std::cerr << "INFO, identifyRedundantReads(), processed readid " << i << ", collected " << mmWalkRead.size() << " minimizers from contained read\n";
 #endif
 
+      if (mmWalkRead.size() == 0) continue; //no point going further
+
       //collect minimizers from parent reads
       {
         for (uint32_t j = g.containment_offsets[i]; j < g.containment_offsets[i+1]; j++) {

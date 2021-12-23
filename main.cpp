@@ -47,7 +47,6 @@ int main(int argc, char *argv[])
     std::cerr << "  -I NUM      max count of iterations, default " << param.max_iter << "\n";
     std::cerr << "  -m NUM      min fraction of minimizer matches for redundant contained reads, default " << param.cutoff << "\n";
     std::cerr << "  -H          use homopolymer-compressed k-mer\n";
-    std::cerr << "  -p          mark contained reads at ends as redundant\n";
     std::cerr << "  -c          simply mark all contained reads as redundant and remove\n";
     std::cerr << "  -t NUM      fuzz value during transitive reduction, default " << param.fuzz << "\n";
     std::cerr << "  -T NUM      threshold for tip length removal, default " << param.maxTipLen << ", set 0 to disable\n";
