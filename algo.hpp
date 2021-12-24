@@ -78,7 +78,7 @@ void computeMinimizersFromString(std::vector<uint32_t> &container, const std::st
  * @param[in] end                     1-based, end string processing here in the current read string
  * @param[in] remaining_depth_bases   total count of bases to process during DFS
  */
-uint32_t dfs_procedure (graphcontainer &g, uint32_t src_vertex, uint32_t beg, uint32_t end, uint32_t remaining_depth_bases, std::set<uint32_t> &visited_vertices, std::vector<uint32_t> &minimizers, const algoParams &param)
+uint32_t dfs_procedure (const graphcontainer &g, uint32_t src_vertex, uint32_t beg, uint32_t end, uint32_t remaining_depth_bases, std::set<uint32_t> &visited_vertices, std::vector<uint32_t> &minimizers, const algoParams &param)
 {
   if (visited_vertices.find(src_vertex) != visited_vertices.end()) return 0U; //visited already
   uint32_t src_readid = src_vertex >> 1;
@@ -250,18 +250,31 @@ void identifyRedundantReads(graphcontainer &g, const algoParams &param, std::ofs
 
         if (mmWalkRead.size() > 0 && 1.0 * mmCommon.size() / mmWalkRead.size() >= param.cutoff) {
           g.redundant[i] = true;
-          if (!param.logFileName.empty()) log << g.umap_inverse[i] << "\tidentifyRedundantReads()\tREDUNDANT=T\tPARENTS=";
+          if (!param.logFileName.empty()) {
+#pragma omp critical
+            log << g.umap_inverse[i] << "\tidentifyRedundantReads()\tREDUNDANT=T\tPARENTS=";
+          }
         }
-        else
-          if (!param.logFileName.empty()) log << g.umap_inverse[i] << "\tidentifyRedundantReads()\tREDUNDANT=F\tPARENTS=";
+        else {
+          if (!param.logFileName.empty()) {
+#pragma omp critical
+            log << g.umap_inverse[i] << "\tidentifyRedundantReads()\tREDUNDANT=F\tPARENTS=";
+          }
+        }
 
         for (uint32_t j = g.containment_offsets[i]; j < g.containment_offsets[i+1]; j++)
         {
           uint32_t parentReadId = g.containments[j].dst;
           if (g.redundant[parentReadId] == false)
-            if (!param.logFileName.empty()) log << g.umap_inverse[parentReadId] << ", ";
+            if (!param.logFileName.empty()) {
+#pragma omp critical
+              log << g.umap_inverse[parentReadId] << ", ";
+            }
         }
-        if (!param.logFileName.empty()) log << "\t" << mmCommon.size() << "/" << mmWalkRead.size() << ":" << mmWalkParentReads.size() << "\n";
+        if (!param.logFileName.empty()) {
+#pragma omp critical
+          log << "\t" << mmCommon.size() << "/" << mmWalkRead.size() << ":" << mmWalkParentReads.size() << "\n";
+        }
       }
     }
   }

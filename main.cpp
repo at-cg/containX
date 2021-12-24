@@ -1,5 +1,6 @@
 #include <iostream>
 #include <cassert>
+#include <chrono>
 #include <zlib.h>
 
 #include "graph.hpp"
@@ -23,6 +24,8 @@ int main(int argc, char *argv[])
   param.maxTipLen = 3;
   param.depthReadLen = 5, param.depthBaseCount = 100000;
   param.threads = 1;
+
+
 
   while ((c = ketopt(&o, argc, argv, 1, "cd:D:Hi:I:l:L:m:n:t:T:w:W:", 0)) >= 0)
   {
@@ -78,8 +81,15 @@ int main(int argc, char *argv[])
   param.printParams();
   omp_set_num_threads (param.threads);
 
+
+  auto tStart = std::chrono::system_clock::now();
+  std::cerr << "INFO, main(), started timer\n";
+
   graphcontainer g;
   ovlgraph_gen (argv[o.ind], argv[o.ind+1], min_ovlp_identity, min_ovlp_len, g);
+
+  std::chrono::duration<double> wctduration = (std::chrono::system_clock::now() - tStart);
+  std::cerr << "INFO, main(), graph generation completed after " << wctduration.count() << " seconds\n";
 
 #ifdef VERBOSE
   printContainmentDegreeDistribution (g, "ContainmentDegree.beforeSimplify.txt");
@@ -88,6 +98,9 @@ int main(int argc, char *argv[])
 #endif
 
   ovlgraph_simplify (removeAllContainedReads, g, param);
+
+  wctduration = (std::chrono::system_clock::now() - tStart);
+  std::cerr << "INFO, main(), graph simplification completed after " << wctduration.count() << " seconds\n";
 
 
 #ifdef VERBOSE
