@@ -11,6 +11,7 @@ struct algoParams
   uint32_t fuzz;                  //fuzz parameter for transitive reduction (Myers 2005)
   uint32_t max_iter;              //user-specified threshold on count of iterations
   uint32_t maxTipLen;             //threshold for tip length (0 means disabled)
+  uint32_t threads;               //thread count
   float d;                        //[0,1] sampling density
   float cutoff;                   //what fraction of minimizers must match for redundancy
   bool hpc;                       //parse k-mers in homopolymer compressed space
@@ -26,6 +27,7 @@ struct algoParams
     std::cerr << "INFO, printParams(), depthReadLen = " << depthReadLen << "\n";
     std::cerr << "INFO, printParams(), depthBaseCount = " << depthBaseCount << "\n";
     std::cerr << "INFO, printParams(), k = " << k << "\n";
+    std::cerr << "INFO, printParams(), threads = " << threads << "\n";
     std::cerr << "INFO, printParams(), fuzz = " << fuzz << "\n";
     std::cerr << "INFO, printParams(), tip length cutoff = " << maxTipLen << "\n";
     std::cerr << "INFO, printParams(), d (density) = " << d << "\n";

@@ -5,6 +5,7 @@
 #include "common.hpp"
 #include "graph.hpp"
 #include "param.hpp"
+#include <omp.h>
 
 /**
  * @param[out]  container     push new minimizers here
@@ -131,133 +132,137 @@ uint32_t dfs_procedure (graphcontainer &g, uint32_t src_vertex, uint32_t beg, ui
 
 void identifyRedundantReads(graphcontainer &g, const algoParams &param, std::ofstream& log)
 {
-  std::vector<uint32_t> mmWalkRead; //walk along same orientation as the read, and collect minimizers
-  std::vector<uint32_t> mmWalkParentReads; //collect minimizers by walking from parent reads containing the current read
-  std::vector<uint32_t> mmCommon; //common minimizers within the above two
-
-  std::set<uint32_t> visited_vertices;
 
   //TODO: reconsider if we should process contained reads in a particular order
 
-  for (uint32_t i = 0; i < g.readCount; i++)
+#pragma omp parallel
   {
-    assert (g.readseq[i].length() > 0);
-    uint32_t available_parent_count = 0;
-    mmWalkRead.clear();
-    mmWalkParentReads.clear();
-    mmCommon.clear();
+    std::vector<uint32_t> mmWalkRead; //walk along same orientation as the read, and collect minimizers
+    std::vector<uint32_t> mmWalkParentReads; //collect minimizers by walking from parent reads containing the current read
+    std::vector<uint32_t> mmCommon; //common minimizers within the above two
+    std::set<uint32_t> visited_vertices;
 
-    if (g.contained[i] == true && g.redundant[i] == false)
+#pragma omp for
+    for (uint32_t i = 0; i < g.readCount; i++)
     {
-      //confirm if parent reads are still available, otherwise nothing to do
+      assert (g.readseq[i].length() > 0);
+      uint32_t available_parent_count = 0;
+      mmWalkRead.clear();
+      mmWalkParentReads.clear();
+      mmCommon.clear();
+
+      if (g.contained[i] == true && g.redundant[i] == false)
       {
-        for (uint32_t j = g.containment_offsets[i]; j < g.containment_offsets[i+1]; j++)
-          if (g.redundant[g.containments[j].dst] == false)
-            available_parent_count++;
-        if (available_parent_count == 0) continue;
-      }
+        //confirm if parent reads are still available, otherwise nothing to do
+        {
+          for (uint32_t j = g.containment_offsets[i]; j < g.containment_offsets[i+1]; j++)
+            if (g.redundant[g.containments[j].dst] == false)
+              available_parent_count++;
+          if (available_parent_count == 0) continue;
+        }
 
-      //user-specified depth during DFS in terms of count of bases
-      uint32_t depth_bases = std::min<uint32_t>(param.depthReadLen * g.readseq[i].length(), param.depthBaseCount);
+        //user-specified depth during DFS in terms of count of bases
+        uint32_t depth_bases = std::min<uint32_t>(param.depthReadLen * g.readseq[i].length(), param.depthBaseCount);
 
-      //collect minimizers by starting DFS from contained read
-      {
-        visited_vertices.clear();
-        uint32_t bases_processed;
-        uint32_t vertexId = i << 1 | 0; //forward orientation
-        //should we also walk in opposite orientation? //TODO
+        //collect minimizers by starting DFS from contained read
+        {
+          visited_vertices.clear();
+          uint32_t bases_processed;
+          uint32_t vertexId = i << 1 | 0; //forward orientation
+          //should we also walk in opposite orientation? //TODO
 
-        //set begin offset = end offset below to start collecting minimizers from adjacent vertices
-        bases_processed = dfs_procedure (g, vertexId, g.readseq[i].length(), g.readseq[i].length(), depth_bases, visited_vertices, mmWalkRead, param);
+          //set begin offset = end offset below to start collecting minimizers from adjacent vertices
+          bases_processed = dfs_procedure (g, vertexId, g.readseq[i].length(), g.readseq[i].length(), depth_bases, visited_vertices, mmWalkRead, param);
 
-        vertexId = i << 1 | 1; //reverse orientation
-        bases_processed += dfs_procedure (g, vertexId, g.readseq[i].length(), g.readseq[i].length(), depth_bases, visited_vertices, mmWalkRead, param);
-      }
+          vertexId = i << 1 | 1; //reverse orientation
+          bases_processed += dfs_procedure (g, vertexId, g.readseq[i].length(), g.readseq[i].length(), depth_bases, visited_vertices, mmWalkRead, param);
+        }
 
 #ifdef VERBOSE
-      std::cerr << "INFO, identifyRedundantReads(), processed readid " << i << ", collected " << mmWalkRead.size() << " minimizers from contained read\n";
+        std::cerr << "INFO, identifyRedundantReads(), processed readid " << i << ", collected " << mmWalkRead.size() << " minimizers from contained read\n";
 #endif
 
-      if (mmWalkRead.size() == 0) continue; //no point going further
+        if (mmWalkRead.size() == 0) continue; //no point going further
 
-      //collect minimizers from parent reads
-      {
-        visited_vertices.clear();
-        for (uint32_t j = g.containment_offsets[i]; j < g.containment_offsets[i+1]; j++) {
+        //collect minimizers from parent reads
+        {
+          visited_vertices.clear();
+          for (uint32_t j = g.containment_offsets[i]; j < g.containment_offsets[i+1]; j++) {
 
-          assert (g.containments[j].src == i);
-          uint32_t parentReadId = g.containments[j].dst;
-          uint32_t parentReadLen = g.readseq[parentReadId].length();
+            assert (g.containments[j].src == i);
+            uint32_t parentReadId = g.containments[j].dst;
+            uint32_t parentReadLen = g.readseq[parentReadId].length();
 
-          if (g.redundant[parentReadId] == false)
-          {
-            //walk w.r.t. forward orientation of read string
-            uint32_t revbit = (g.containments[j].rev == true) ? 1U : 0U;
-            uint32_t bases_processed = 0, beg, end;
-            uint32_t parentVertexId = parentReadId << 1 | revbit;
+            if (g.redundant[parentReadId] == false)
+            {
+              //walk w.r.t. forward orientation of read string
+              uint32_t revbit = (g.containments[j].rev == true) ? 1U : 0U;
+              uint32_t bases_processed = 0, beg, end;
+              uint32_t parentVertexId = parentReadId << 1 | revbit;
 
-            if  (revbit == 0) {
-              //suffix of read string
-              beg = g.containments[j].dst_end_offset;
-              end = std::min (parentReadLen, beg + depth_bases);
-            } else {
-              //prefix of read string
-              end = g.containments[j].dst_start_offset;
-              beg = end - std::min (end, depth_bases);
+              if  (revbit == 0) {
+                //suffix of read string
+                beg = g.containments[j].dst_end_offset;
+                end = std::min (parentReadLen, beg + depth_bases);
+              } else {
+                //prefix of read string
+                end = g.containments[j].dst_start_offset;
+                beg = end - std::min (end, depth_bases);
+              }
+              bases_processed = dfs_procedure (g, parentVertexId, beg, end, depth_bases, visited_vertices, mmWalkParentReads, param);
+
+              //walk w.r.t. reverse orientation of read string
+              revbit = (g.containments[j].rev == true) ? 0U : 1U;
+              parentVertexId = parentReadId << 1 | revbit;
+
+              if  (revbit == 0) {
+                //suffix of read string
+                beg = g.containments[j].dst_end_offset;
+                end = std::min (parentReadLen, beg + depth_bases);
+              } else {
+                //prefix of read string
+                end = g.containments[j].dst_start_offset;
+                beg = end - std::min (end, depth_bases);
+              }
+              bases_processed += dfs_procedure (g, parentVertexId, beg, end, depth_bases, visited_vertices, mmWalkParentReads, param);
             }
-            bases_processed = dfs_procedure (g, parentVertexId, beg, end, depth_bases, visited_vertices, mmWalkParentReads, param);
-
-            //walk w.r.t. reverse orientation of read string
-            revbit = (g.containments[j].rev == true) ? 0U : 1U;
-            parentVertexId = parentReadId << 1 | revbit;
-
-            if  (revbit == 0) {
-              //suffix of read string
-              beg = g.containments[j].dst_end_offset;
-              end = std::min (parentReadLen, beg + depth_bases);
-            } else {
-              //prefix of read string
-              end = g.containments[j].dst_start_offset;
-              beg = end - std::min (end, depth_bases);
-            }
-            bases_processed += dfs_procedure (g, parentVertexId, beg, end, depth_bases, visited_vertices, mmWalkParentReads, param);
           }
         }
-      }
 
 #ifdef VERBOSE
-      std::cerr << "INFO, identifyRedundantReads(), collected " << mmWalkParentReads.size() << " minimizers from " << available_parent_count << " parent reads\n";
+        std::cerr << "INFO, identifyRedundantReads(), collected " << mmWalkParentReads.size() << " minimizers from " << available_parent_count << " parent reads\n";
 #endif
 
-      //keep unique minimizers only before comparing
-      //rationale: there may be duplicate minimizers collected from redundant neighboring reads
-      std::sort (mmWalkParentReads.begin(), mmWalkParentReads.end());
-      auto last = std::unique (mmWalkParentReads.begin(), mmWalkParentReads.end());
-      mmWalkParentReads.erase (last, mmWalkParentReads.end());
+        //keep unique minimizers only before comparing
+        //rationale: there may be duplicate minimizers collected from redundant neighboring reads
+        std::sort (mmWalkParentReads.begin(), mmWalkParentReads.end());
+        auto last = std::unique (mmWalkParentReads.begin(), mmWalkParentReads.end());
+        mmWalkParentReads.erase (last, mmWalkParentReads.end());
 
-      std::sort (mmWalkRead.begin(), mmWalkRead.end());
-      last = std::unique (mmWalkRead.begin(), mmWalkRead.end());
-      mmWalkRead.erase (last, mmWalkRead.end());
+        std::sort (mmWalkRead.begin(), mmWalkRead.end());
+        last = std::unique (mmWalkRead.begin(), mmWalkRead.end());
+        mmWalkRead.erase (last, mmWalkRead.end());
 
-      //common minimizers
-      std::set_intersection(mmWalkParentReads.begin(), mmWalkParentReads.end(),
-          mmWalkRead.begin(), mmWalkRead.end(),
-          std::back_inserter(mmCommon));
+        //common minimizers
+        std::set_intersection(mmWalkParentReads.begin(), mmWalkParentReads.end(),
+            mmWalkRead.begin(), mmWalkRead.end(),
+            std::back_inserter(mmCommon));
 
-      if (mmWalkRead.size() > 0 && 1.0 * mmCommon.size() / mmWalkRead.size() >= param.cutoff) {
-        g.redundant[i] = true;
-        if (!param.logFileName.empty()) log << g.umap_inverse[i] << "\tidentifyRedundantReads()\tREDUNDANT=T\tPARENTS=";
+        if (mmWalkRead.size() > 0 && 1.0 * mmCommon.size() / mmWalkRead.size() >= param.cutoff) {
+          g.redundant[i] = true;
+          if (!param.logFileName.empty()) log << g.umap_inverse[i] << "\tidentifyRedundantReads()\tREDUNDANT=T\tPARENTS=";
+        }
+        else
+          if (!param.logFileName.empty()) log << g.umap_inverse[i] << "\tidentifyRedundantReads()\tREDUNDANT=F\tPARENTS=";
+
+        for (uint32_t j = g.containment_offsets[i]; j < g.containment_offsets[i+1]; j++)
+        {
+          uint32_t parentReadId = g.containments[j].dst;
+          if (g.redundant[parentReadId] == false)
+            if (!param.logFileName.empty()) log << g.umap_inverse[parentReadId] << ", ";
+        }
+        if (!param.logFileName.empty()) log << "\t" << mmCommon.size() << "/" << mmWalkRead.size() << ":" << mmWalkParentReads.size() << "\n";
       }
-      else
-        if (!param.logFileName.empty()) log << g.umap_inverse[i] << "\tidentifyRedundantReads()\tREDUNDANT=F\tPARENTS=";
-
-      for (uint32_t j = g.containment_offsets[i]; j < g.containment_offsets[i+1]; j++)
-      {
-        uint32_t parentReadId = g.containments[j].dst;
-        if (g.redundant[parentReadId] == false)
-          if (!param.logFileName.empty()) log << g.umap_inverse[parentReadId] << ", ";
-      }
-      if (!param.logFileName.empty()) log << "\t" << mmCommon.size() << "/" << mmWalkRead.size() << ":" << mmWalkParentReads.size() << "\n";
     }
   }
 
