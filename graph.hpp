@@ -8,6 +8,7 @@
 #include <fstream>
 #include "paf.hpp"
 #include "common.hpp"
+#include "param.hpp"
 
 /*
                     |< ov_src >|
@@ -285,12 +286,12 @@ class graphcontainer
     }
 
     //consider all contained reads as redundant and remove them from graph
-    void removeContainedReads(std::ofstream &log)
+    void removeContainedReads(const algoParams &param, std::ofstream &log)
     {
       for (uint32_t i = 0; i < readCount; i++) {
         if (redundant[i] == false && contained[i] == true) {
           redundant[i] = true;
-          log << umap_inverse[i] << "\tremoveContainedReads()\n";
+          if (!param.logFileName.empty()) log << umap_inverse[i] << "\tremoveContainedReads()\n";
         }
       }
 
@@ -309,12 +310,12 @@ class graphcontainer
 
     //consider contained reads as redundant if their
     //'containment degree' is > maxDegree
-    void removeContainedReadsAboveDegree(uint32_t maxDegree, std::ofstream &log)
+    void removeContainedReadsAboveDegree(const algoParams &param, std::ofstream &log)
     {
       for (uint32_t i = 0; i < readCount; i++) {
-        if (getContaintmentDegree (i) > maxDegree && redundant[i] == false && contained[i] == true) {
+        if (getContaintmentDegree (i) > param.maxContainmentDegree && redundant[i] == false && contained[i] == true) {
           redundant[i] = true;
-          log << umap_inverse[i] << "\tremoveContainedReadsAboveDegree()\n";
+          if (!param.logFileName.empty()) log << umap_inverse[i] << "\tremoveContainedReadsAboveDegree()\n";
         }
       }
 
@@ -401,6 +402,8 @@ void ovlgraph_gen(const char *readfilename, const char *paffilename, float min_o
     exit(1);
   }
 
+  std::cerr << "INFO, ovlgraph_gen(), min_ovlp_identity = " << min_ovlp_identity << "\n";
+  std::cerr << "INFO, ovlgraph_gen(), min_ovlp_len = " << min_ovlp_len << "\n";
   std::cerr << "INFO, ovlgraph_gen(), reading paf records from " << paffilename << "\n";
 
   uint64_t totPaf = 0, validPaf = 0, suffPrefPaf = 0, containedPaf = 0;
@@ -440,6 +443,11 @@ void ovlgraph_gen(const char *readfilename, const char *paffilename, float min_o
           g.containments.emplace_back(c);
           containedPaf++;
         }
+
+        /**
+         * There can be scenarios where read A is contained in read B, and
+         * the opposite also holds true, that should be ok
+         */
 
         /**
          * Conditions below check for suffix-prefix overlaps

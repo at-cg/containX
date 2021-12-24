@@ -4,32 +4,7 @@
 #include <set>
 #include "common.hpp"
 #include "graph.hpp"
-
-struct algoParams
-{
-  uint32_t maxContainmentDegree;  //above this, all contained reads will be considered redundant
-  uint32_t depth;                 //how far to traverse while collecting minimizers, factor of read length
-  uint32_t k;                     //k-mer length (<=16)
-  uint32_t fuzz;                  //fuzz parameter for transitive reduction (Myers 2005)
-  uint32_t max_iter;              //user-specified threshold on count of iterations
-  uint32_t maxTipLen;             //threshold for tip length (0 means disabled)
-  float d;                        //[0,1] sampling density
-  float cutoff;                   //what fraction of minimizers must match for redundancy
-  bool hpc;                       //parse k-mers in homopolymer compressed space
-
-  void printParams ()
-  {
-    std::cerr << "INFO, printParams(), maxContainmentDegree = " << maxContainmentDegree << "\n";
-    std::cerr << "INFO, printParams(), depth = " << depth << "\n";
-    std::cerr << "INFO, printParams(), k = " << k << "\n";
-    std::cerr << "INFO, printParams(), fuzz = " << fuzz << "\n";
-    std::cerr << "INFO, printParams(), tip length cutoff = " << maxTipLen << "\n";
-    std::cerr << "INFO, printParams(), d (density) = " << d << "\n";
-    std::cerr << "INFO, printParams(), cutoff = " << cutoff << "\n";
-    std::cerr << "INFO, printParams(), max_iter = " << max_iter << "\n";
-    std::cerr << "INFO, printParams(), hpc = " << std::boolalpha << hpc << "\n";
-  }
-};
+#include "param.hpp"
 
 /**
  * @param[out]  container     push new minimizers here
@@ -163,6 +138,7 @@ void identifyRedundantReads(graphcontainer &g, const algoParams &param, std::ofs
   std::set<uint32_t> visited_vertices;
 
   //TODO: reconsider if we should process contained reads in a particular order
+
   for (uint32_t i = 0; i < g.readCount; i++)
   {
     assert (g.readseq[i].length() > 0);
@@ -182,7 +158,7 @@ void identifyRedundantReads(graphcontainer &g, const algoParams &param, std::ofs
       }
 
       //user-specified depth during DFS in terms of count of bases
-      uint32_t depth_bases = param.depth * g.readseq[i].length();
+      uint32_t depth_bases = std::min<uint32_t>(param.depthReadLen * g.readseq[i].length(), param.depthBaseCount);
 
       //collect minimizers by starting DFS from contained read
       {
@@ -206,12 +182,12 @@ void identifyRedundantReads(graphcontainer &g, const algoParams &param, std::ofs
 
       //collect minimizers from parent reads
       {
+        visited_vertices.clear();
         for (uint32_t j = g.containment_offsets[i]; j < g.containment_offsets[i+1]; j++) {
 
           assert (g.containments[j].src == i);
           uint32_t parentReadId = g.containments[j].dst;
           uint32_t parentReadLen = g.readseq[parentReadId].length();
-          visited_vertices.clear();
 
           if (g.redundant[parentReadId] == false)
           {
@@ -270,18 +246,18 @@ void identifyRedundantReads(graphcontainer &g, const algoParams &param, std::ofs
 
       if (mmWalkRead.size() > 0 && 1.0 * mmCommon.size() / mmWalkRead.size() >= param.cutoff) {
         g.redundant[i] = true;
-        log << g.umap_inverse[i] << "\tidentifyRedundantReads()\tREDUNDANT=T\tPARENTS=";
+        if (!param.logFileName.empty()) log << g.umap_inverse[i] << "\tidentifyRedundantReads()\tREDUNDANT=T\tPARENTS=";
       }
       else
-        log << g.umap_inverse[i] << "\tidentifyRedundantReads()\tREDUNDANT=F\tPARENTS=";
+        if (!param.logFileName.empty()) log << g.umap_inverse[i] << "\tidentifyRedundantReads()\tREDUNDANT=F\tPARENTS=";
 
       for (uint32_t j = g.containment_offsets[i]; j < g.containment_offsets[i+1]; j++)
       {
         uint32_t parentReadId = g.containments[j].dst;
         if (g.redundant[parentReadId] == false)
-          log << g.umap_inverse[parentReadId] << ", ";
+          if (!param.logFileName.empty()) log << g.umap_inverse[parentReadId] << ", ";
       }
-      log << "\t" << mmCommon.size() << "/" << mmWalkRead.size() << ":" << mmWalkParentReads.size() << "\n";
+      if (!param.logFileName.empty()) log << "\t" << mmCommon.size() << "/" << mmWalkRead.size() << ":" << mmWalkParentReads.size() << "\n";
     }
   }
 
@@ -299,7 +275,7 @@ void tipCleaning (graphcontainer &g, const algoParams &param, std::ofstream& log
     if (g.getDegree (i ^ 1) != 0) continue;       //not a tip if there are incoming edges
     if (g.getDegree (i) > 1) continue;            //multiple out-edges
     if (g.getDegree (i) == 0)  {                  //singleton vertex
-      log << g.umap_inverse[i >> 1] << "\ttipCleaning()\n";
+      if (!param.logFileName.empty()) log << g.umap_inverse[i >> 1] << "\ttipCleaning()\n";
       g.redundant[i >> 1] = true;
       continue;
     }
@@ -323,7 +299,7 @@ void tipCleaning (graphcontainer &g, const algoParams &param, std::ofstream& log
 
     if (validTip) {
       for (uint32_t &i : tipVertexIds) {
-        log << g.umap_inverse[i >> 1] << "\ttipCleaning()\n";
+        if (!param.logFileName.empty()) log << g.umap_inverse[i >> 1] << "\ttipCleaning()\n";
         g.redundant[i >> 1] = true;
       }
     }
@@ -335,18 +311,18 @@ void tipCleaning (graphcontainer &g, const algoParams &param, std::ofstream& log
 /**
  * @param[in]   removeContainedReads      simply mark all contained reads as redundant
  */
-void ovlgraph_simplify (bool removeContainedReads, graphcontainer &g, const algoParams &param, const std::string &logfilename)
+void ovlgraph_simplify (bool removeContainedReads, graphcontainer &g, const algoParams &param)
 {
-  std::ofstream logFile (logfilename);
+  std::ofstream logFile (param.logFileName);
 
-  if (removeContainedReads) g.removeContainedReads (logFile);
+  if (removeContainedReads) g.removeContainedReads (param, logFile);
 
   g.index(); //indexing is needed prior to transitive reduction
   g.transitiveReduction (param.fuzz);
   g.index(); //re-index
 
   //check redundancy of contained reads
-  g.removeContainedReadsAboveDegree (param.maxContainmentDegree, logFile);
+  g.removeContainedReadsAboveDegree (param, logFile);
   g.index();
   g.printGraphStats();
   uint32_t iter = 0;
@@ -370,8 +346,10 @@ void ovlgraph_simplify (bool removeContainedReads, graphcontainer &g, const algo
 
     iter++;
 
-    if (std::count(g.redundant.begin(), g.redundant.end(), true) == countRedundantReads)
+    if (std::count(g.redundant.begin(), g.redundant.end(), true) == countRedundantReads) {
+      std::cerr << "INFO, ovlgraph_simplify() converged after " << iter << " iterations\n";
       break; //converged
+    }
   }
 
   std::cerr << "INFO, ovlgraph_simplify() finished, printing final stats\n";

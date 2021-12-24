@@ -4,17 +4,16 @@
 
 #include "graph.hpp"
 #include "algo.hpp"
+#include "param.hpp"
 #include "ketopt.h"
 
 int main(int argc, char *argv[])
 {
   ketopt_t o = KETOPT_INIT;
-  float min_ovlp_identity = 0.0; //[0-100]
-  int min_ovlp_len = 0;
+  float min_ovlp_identity = 100.0; //[0-100]
+  int min_ovlp_len = 5000;
   int c;
-  std::string gfadumpfilename;
-  std::string dumpNonRedudantContainedReads;
-  bool printReadStrings = true;
+  bool printReadStrings = false;
   bool removeAllContainedReads = false;
   algoParams param;
   param.hpc = false;
@@ -22,20 +21,24 @@ int main(int argc, char *argv[])
   param.max_iter = 1; //upper bound for graph simplification iterations
   param.cutoff = 1.0; //[0-1]
   param.maxTipLen = 3;
+  param.depthReadLen = 5, param.depthBaseCount = 100000;
 
-  while ((c = ketopt(&o, argc, argv, 1, "cd:D:Hi:I:l:m:n:t:T:", 0)) >= 0)
+  while ((c = ketopt(&o, argc, argv, 1, "cd:D:Hi:I:l:L:m:n:t:T:w:W:", 0)) >= 0)
   {
     if (c == 'c') removeAllContainedReads = true;
-    else if (c == 'd') gfadumpfilename = o.arg, printReadStrings = false;
-    else if (c == 'D') gfadumpfilename = o.arg;
+    else if (c == 'd') param.gfadumpfilename = o.arg;
+    else if (c == 'D') param.gfadumpfilename = o.arg, printReadStrings = true;
     else if (c == 'H') param.hpc = true;
     else if (c == 'i') min_ovlp_identity = atof(o.arg);
     else if (c == 'I') param.max_iter = atoi(o.arg);
     else if (c == 'l') min_ovlp_len = atoi(o.arg);
     else if (c == 'm') param.cutoff = atof(o.arg);
-    else if (c == 'n') dumpNonRedudantContainedReads = o.arg;
+    else if (c == 'n') param.dumpNonRedudantContainedReads = o.arg;
+    else if (c == 'L') param.logFileName = o.arg;
     else if (c == 't') param.fuzz = atoi(o.arg);
     else if (c == 'T') param.maxTipLen = atoi(o.arg);
+    else if (c == 'w') param.depthReadLen = atoi(o.arg);
+    else if (c == 'W') param.depthBaseCount = atoi(o.arg);
   }
 
   //print usage
@@ -46,11 +49,14 @@ int main(int argc, char *argv[])
     std::cerr << "  -i NUM      min overlap percentage identity [0.0-100.0], default " << min_ovlp_identity << "\n";
     std::cerr << "  -I NUM      max count of iterations, default " << param.max_iter << "\n";
     std::cerr << "  -m NUM      min fraction of minimizer matches for redundant contained reads, default " << param.cutoff << "\n";
+    std::cerr << "  -w NUM      walk length cutoff as a factor of read length, default " << param.depthReadLen << "\n";
+    std::cerr << "  -W NUM      walk length cutoff in terms of absoute base count, default " << param.depthBaseCount << "\n";
     std::cerr << "  -H          use homopolymer-compressed k-mer\n";
     std::cerr << "  -c          simply mark all contained reads as redundant and remove\n";
     std::cerr << "  -t NUM      fuzz value during transitive reduction, default " << param.fuzz << "\n";
     std::cerr << "  -T NUM      threshold for tip length removal, default " << param.maxTipLen << ", set 0 to disable\n";
     std::cerr << "  -n FILE     dump read ids of non-redundant contained reads\n";
+    std::cerr << "  -L FILE     dump algorithm log\n";
     std::cerr << "  -d FILE     dump graph in gfa format without sequences\n";
     std::cerr << "  -D FILE     dump graph in gfa format with sequences\n";
     return 1;
@@ -59,10 +65,11 @@ int main(int argc, char *argv[])
   assert (min_ovlp_identity >= 0.0);
   assert (min_ovlp_identity <= 100.0);
   assert (param.cutoff >= 0.0 && param.cutoff <= 1.0);
+  assert (param.depthReadLen > 0);
+  assert (param.depthBaseCount > 0);
 
   //set parameters
   param.maxContainmentDegree = 5; //warning: this would need adjustment with ploidy
-  param.depth = 5;
   param.k = 16;
   param.d = 1.0/param.k;
   param.printParams();
@@ -76,7 +83,7 @@ int main(int argc, char *argv[])
   printEdgesDOTFormat (g, "edges.beforeSimplify.DOT");
 #endif
 
-  ovlgraph_simplify (removeAllContainedReads, g, param, "log_simplify.txt");
+  ovlgraph_simplify (removeAllContainedReads, g, param);
 
 
 #ifdef VERBOSE
@@ -85,11 +92,8 @@ int main(int argc, char *argv[])
   printEdgesDOTFormat (g, "edges.afterSimplify.DOT");
 #endif
 
-  if (!gfadumpfilename.empty())
-    g.outputGFA (gfadumpfilename, printReadStrings);
-
-  if (!dumpNonRedudantContainedReads.empty())
-    g.outputNonRedudantContainedReads (dumpNonRedudantContainedReads);
+  g.outputGFA (param.gfadumpfilename, printReadStrings);
+  g.outputNonRedudantContainedReads (param.dumpNonRedudantContainedReads);
 
 
   //log complete command given by user
