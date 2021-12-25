@@ -142,6 +142,9 @@ void identifyRedundantReads(graphcontainer &g, const algoParams &param, std::ofs
     std::vector<uint32_t> mmCommon; //common minimizers within the above two
     std::set<uint32_t> visited_vertices;
 
+    //number ids of reads were assigned in the order they were found in paf file
+    //static scheduling with chunk size one is preferred as
+    //reads with lower ids may have more overlaps 
 #pragma omp for schedule(static, 1)
     for (uint32_t i = 0; i < g.readCount; i++)
     {
