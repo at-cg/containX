@@ -17,19 +17,23 @@ int main(int argc, char *argv[])
   bool printReadStrings = false;
   bool removeAllContainedReads = false;
   algoParams param;
+
+  //set parameters
   param.hpc = false;
   param.fuzz = 100; //disable transitive reduction of edges by default
-  param.max_iter = 5; //upper bound for graph simplification iterations
+  param.max_iter = 2; //upper bound for graph simplification iterations
   param.cutoff = 1.0; //[0-1]
   param.maxTipLen = 3;
-  param.depthReadLen = 5, param.depthBaseCount = 100000;
+  param.depthReadLen = 2, param.depthBaseCount = UINT32_MAX;
   param.threads = 1;
+  param.maxContainmentDegree = UINT32_MAX; //disabled by default
+  param.k = 16;
+  param.d = 2.0/param.k;
 
-
-
-  while ((c = ketopt(&o, argc, argv, 1, "cd:D:Hi:I:l:L:m:n:t:T:w:W:", 0)) >= 0)
+  while ((c = ketopt(&o, argc, argv, 1, "cC:d:D:Hi:I:l:L:m:n:s:t:T:w:W:", 0)) >= 0)
   {
     if (c == 'c') removeAllContainedReads = true;
+    else if (c == 'C') param.maxContainmentDegree = atoi(o.arg);
     else if (c == 'd') param.gfadumpfilename = o.arg;
     else if (c == 'D') param.gfadumpfilename = o.arg, printReadStrings = true;
     else if (c == 'f') param.fuzz = atoi(o.arg);
@@ -40,6 +44,7 @@ int main(int argc, char *argv[])
     else if (c == 'm') param.cutoff = atof(o.arg);
     else if (c == 'n') param.dumpNonRedudantContainedReads = o.arg;
     else if (c == 'L') param.logFileName = o.arg;
+    else if (c == 's') param.d = 1.0 * atoi(o.arg) / param.k;
     else if (c == 't') param.threads = atoi(o.arg);
     else if (c == 'T') param.maxTipLen = atoi(o.arg);
     else if (c == 'w') param.depthReadLen = atoi(o.arg);
@@ -54,11 +59,13 @@ int main(int argc, char *argv[])
     std::cerr << "  -i NUM      min overlap percentage identity [0.0-100.0], default " << min_ovlp_identity << "\n";
     std::cerr << "  -t NUM      thread count, default " << param.threads << "\n";
     std::cerr << "  -I NUM      max count of iterations, default " << param.max_iter << "\n";
+    std::cerr << "  -s NUM      sample k-mer with NUM/k probability, default " << param.d*param.k << "\n";
     std::cerr << "  -m NUM      min fraction of minimizer matches for redundant contained reads, default " << param.cutoff << "\n";
     std::cerr << "  -w NUM      walk length cutoff as a factor of read length, default " << param.depthReadLen << "\n";
     std::cerr << "  -W NUM      walk length cutoff in terms of absoute base count, default " << param.depthBaseCount << "\n";
     std::cerr << "  -H          use homopolymer-compressed k-mer\n";
-    std::cerr << "  -c          simply mark all contained reads as redundant and remove\n";
+    std::cerr << "  -c          simply mark all contained reads as redundant\n";
+    std::cerr << "  -C NUM      mark reads contained in >NUM reads as redundant, default " << param.maxContainmentDegree << "\n";
     std::cerr << "  -f NUM      fuzz value during transitive reduction, default " << param.fuzz << "\n";
     std::cerr << "  -T NUM      threshold for tip length removal, default " << param.maxTipLen << ", set 0 to disable\n";
     std::cerr << "  -n FILE     dump read ids of non-redundant contained reads\n";
@@ -74,10 +81,6 @@ int main(int argc, char *argv[])
   assert (param.depthReadLen > 0);
   assert (param.depthBaseCount > 0);
 
-  //set parameters
-  param.maxContainmentDegree = 5; //warning: this would need adjustment with ploidy
-  param.k = 16;
-  param.d = 1.0/param.k;
   param.printParams();
   omp_set_num_threads (param.threads);
 

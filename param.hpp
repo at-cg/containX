@@ -31,7 +31,7 @@ struct algoParams
     std::cerr << "INFO, printParams(), fuzz = " << fuzz << "\n";
     std::cerr << "INFO, printParams(), tip length cutoff = " << maxTipLen << "\n";
     std::cerr << "INFO, printParams(), d (density) = " << d << "\n";
-    std::cerr << "INFO, printParams(), cutoff = " << cutoff << "\n";
+    std::cerr << "INFO, printParams(), minimum fraction of minimizer match [0-1] = " << cutoff << "\n";
     std::cerr << "INFO, printParams(), max_iter = " << max_iter << "\n";
     std::cerr << "INFO, printParams(), hpc = " << std::boolalpha << hpc << "\n";
   }

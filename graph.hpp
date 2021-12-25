@@ -70,7 +70,7 @@ class graphcontainer
     //read sequences
     std::vector<std::string> readseq;  //size = count of reads
     std::vector<bool> contained; //size = count of reads
-    std::vector<bool> redundant;   //size = count of reads
+    std::vector<bool> deletedReads;   //size = count of reads
     std::vector<graphArc> edges; //size = 2 x suffix-prefix overlaps
     std::vector<uint32_t> offsets; //for CSR-style indexing
     std::vector<containmentTuple> containments; //size = count of contained overlaps
@@ -103,11 +103,11 @@ class graphcontainer
 
       if (readCount == 0) return;
       assert (contained.size() == 0);
-      assert (redundant.size() == 0);
+      assert (deletedReads.size() == 0);
       assert (readseq.size() == 0);
 
       contained.resize(readCount, false);
-      redundant.resize(readCount, false);
+      deletedReads.resize(readCount, false);
       readseq.resize(readCount, "");
       inverse_map (umap, umap_inverse); //build inverse
 
@@ -140,7 +140,11 @@ class graphcontainer
       std::cerr << "INFO, printGraphStats(), graph has " << edges.size() << " edges\n";
       std::cerr << "INFO, printGraphStats(), graph has " << vertexCount << " vertices from " << readCount << " reads in total\n";
       std::cerr << "INFO, printGraphStats(), " << std::count(contained.begin(), contained.end(), true) << " reads are marked as contained in graph\n";
-      std::cerr << "INFO, printGraphStats(), " << std::count(redundant.begin(), redundant.end(), true) << " reads are marked as redundant in graph\n";
+      uint32_t redundantcontainedReads = 0;
+      for (uint32_t i = 0; i < readCount; i++)
+        if (contained[i] == true && deletedReads[i] == true)
+          redundantcontainedReads++;
+      std::cerr << "INFO, printGraphStats(), " << redundantcontainedReads << " reads are marked as redundant and contained in graph\n";
     }
 
     //index edges and containments
@@ -153,9 +157,9 @@ class graphcontainer
     //sort edge vectors and index using CSR format
     void indexEdges()
     {
-      //get rid of deleted edges as well as edges connecting to redundant vertices
+      //get rid of deleted edges as well as edges connecting to deleted vertices
       {
-        auto it = std::remove_if (edges.begin(), edges.end(), [this](const graphArc &a) {return redundant[a.src >> 1] || redundant[a.dst >> 1] || a.del; });
+        auto it = std::remove_if (edges.begin(), edges.end(), [this](const graphArc &a) {return deletedReads[a.src >> 1] || deletedReads[a.dst >> 1] || a.del; });
         edges.erase (it, edges.end());
       }
 
@@ -186,9 +190,9 @@ class graphcontainer
     //index containment relationships, for fast retrieval of all reads containing a particular read
     void indexContainments()
     {
-      //get rid of containments involving reads marked as redundant
+      //get rid of containment relationships involving deleted reads
       {
-        auto it = std::remove_if (containments.begin(), containments.end(), [this](const containmentTuple &a) {return redundant[a.src] || redundant[a.dst]; });
+        auto it = std::remove_if (containments.begin(), containments.end(), [this](const containmentTuple &a) {return deletedReads[a.src] || deletedReads[a.dst]; });
         containments.erase (it, containments.end());
       }
 
@@ -236,7 +240,7 @@ class graphcontainer
 
       //print reads - use prefix 'read' before their id
       for (uint32_t i = 0; i < readCount; i++)
-        if (redundant[i] == false)
+        if (deletedReads[i] == false)
           if (printReadStrings)
             outstrm  << "S\tread" << i << "\t" << readseq[i] << "\n";
           else
@@ -246,15 +250,15 @@ class graphcontainer
       for (uint32_t i = 0; i < edges.size(); i++) {
         if (edges[i].del == false)
         {
-          assert (redundant[edges[i].src >> 1] == false);
-          assert (redundant[edges[i].dst >> 1] == false);
+          assert (deletedReads[edges[i].src >> 1] == false);
+          assert (deletedReads[edges[i].dst >> 1] == false);
           outstrm << "L\tread" << (edges[i].src >> 1) << "\t" << "+-"[edges[i].src & 1] <<  "\tread" << (edges[i].dst >> 1) << "\t" << "+-"[edges[i].dst & 1] << "\t" << edges[i].ov_src <<  "M\n";
         }
       }
 
       //print containment lines
       for (uint32_t i = 0; i < containments.size(); i++)
-        if (redundant[containments[i].src] == false && redundant[containments[i].dst] == false)
+        if (deletedReads[containments[i].src] == false && deletedReads[containments[i].dst] == false)
           outstrm << "C\tread" << containments[i].dst << "\t" << "+-"[containments[i].rev] << "\tread" << containments[i].src << "\t+\t" << containments[i].dst_start_offset << "\t" << containments[i].dst_end_offset - containments[i].dst_start_offset<< "M\n";
 
       //print summary of reads, may help in debugging
@@ -262,7 +266,7 @@ class graphcontainer
       {
         uint32_t i = e.second; //read id
         //print original read id, length, count of reads containing it, out-degree (fwd), out-degree (rev)
-        if (redundant[i] == false) {
+        if (deletedReads[i] == false) {
             outstrm  << "x\tread" << i << "\t" << e.first << "\t" << readseq[i].length() << "\t" << getContaintmentDegree(i) << "\t" << getDegree (i << 1 | 0) << "\t" << getDegree (i << 1 | 1) << "\n";
         }
       }
@@ -279,7 +283,7 @@ class graphcontainer
       {
         uint32_t i = e.second; //read id
         //print original read id
-        if (contained[i] == true && redundant[i] == false) {
+        if (contained[i] == true && deletedReads[i] == false) {
             outstrm  << e.first << "\n";
         }
       }
@@ -289,8 +293,8 @@ class graphcontainer
     void removeContainedReads(const algoParams &param, std::ofstream &log)
     {
       for (uint32_t i = 0; i < readCount; i++) {
-        if (redundant[i] == false && contained[i] == true) {
-          redundant[i] = true;
+        if (deletedReads[i] == false && contained[i] == true) {
+          deletedReads[i] = true;
           if (!param.logFileName.empty()) log << umap_inverse[i] << "\tremoveContainedReads()\n";
         }
       }
@@ -299,8 +303,8 @@ class graphcontainer
 
       for (auto &e : edges)
       {
-        //check if both end vertices of the edge are non-redundant
-        if (redundant[e.src >> 1] == false && redundant[e.dst >> 1] == false)
+        //check if both end vertices of the edge are still available
+        if (deletedReads[e.src >> 1] == false && deletedReads[e.dst >> 1] == false)
           edges_new.emplace_back(e);
       }
 
@@ -313,8 +317,8 @@ class graphcontainer
     void removeContainedReadsAboveDegree(const algoParams &param, std::ofstream &log)
     {
       for (uint32_t i = 0; i < readCount; i++) {
-        if (getContaintmentDegree (i) > param.maxContainmentDegree && redundant[i] == false && contained[i] == true) {
-          redundant[i] = true;
+        if (getContaintmentDegree (i) > param.maxContainmentDegree && deletedReads[i] == false && contained[i] == true) {
+          deletedReads[i] = true;
           if (!param.logFileName.empty()) log << umap_inverse[i] << "\tremoveContainedReadsAboveDegree()\n";
         }
       }
@@ -324,8 +328,8 @@ class graphcontainer
 
       for (auto &e : edges)
       {
-        //check if both end vertices of the edge are non-redundant
-        if (redundant[e.src >> 1] == false && redundant[e.dst >> 1] == false)
+        //check if both end vertices of the edge are available
+        if (deletedReads[e.src >> 1] == false && deletedReads[e.dst >> 1] == false)
           edges_new.emplace_back(e);
       }
 
@@ -591,7 +595,7 @@ void printContainmentDegreeDistribution (graphcontainer &g, const std::string &f
   std::vector<uint32_t> distribution(maxDegree+1, 0);
 
   for (uint32_t i = 0; i < g.readCount; i++)
-    if (g.redundant[i] == false)
+    if (g.deletedReads[i] == false)
       distribution[g.getContaintmentDegree(i)]++;
 
   //write to file
@@ -613,7 +617,7 @@ void printDegreeDistribution (graphcontainer &g, const std::string &filename)
   std::vector<uint32_t> distribution(maxDegree+1, 0);
 
   for (uint32_t i = 0; i < g.vertexCount; i++)
-    if (g.redundant[i>>1] == false)
+    if (g.deletedReads[i>>1] == false)
       distribution[g.getDegree(i)]++;
 
   //write to file
@@ -631,7 +635,7 @@ void printEdgesDOTFormat (graphcontainer &g, const std::string &filename)
   std::ofstream outFile(filename);
   outFile << "digraph overlaps {\n";
   for (auto &e : g.edges)
-    if (g.redundant[e.src >>1] == false && g.redundant[e.dst >>1] == false && e.del == false)
+    if (g.deletedReads[e.src >>1] == false && g.deletedReads[e.dst >>1] == false && e.del == false)
       outFile << e.src << " -> " << e.dst << ";\n";
   outFile << "}\n";
 }

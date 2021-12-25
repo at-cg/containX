@@ -107,7 +107,7 @@ uint32_t dfs_procedure (const graphcontainer &g, uint32_t src_vertex, uint32_t b
       uint32_t adjVertexId = g.edges[j].dst;
       uint32_t adjReadId = adjVertexId >> 1;
 
-      if (g.redundant[adjReadId] == false)
+      if (g.deletedReads[adjReadId] == false)
       {
         //compute begin and end offsets for next read/vertex
         uint32_t nextReadLen = g.readseq[adjReadId].length();
@@ -142,7 +142,7 @@ void identifyRedundantReads(graphcontainer &g, const algoParams &param, std::ofs
     std::vector<uint32_t> mmCommon; //common minimizers within the above two
     std::set<uint32_t> visited_vertices;
 
-#pragma omp for
+#pragma omp for schedule(static, 1)
     for (uint32_t i = 0; i < g.readCount; i++)
     {
       assert (g.readseq[i].length() > 0);
@@ -151,12 +151,12 @@ void identifyRedundantReads(graphcontainer &g, const algoParams &param, std::ofs
       mmWalkParentReads.clear();
       mmCommon.clear();
 
-      if (g.contained[i] == true && g.redundant[i] == false)
+      if (g.contained[i] == true && g.deletedReads[i] == false)
       {
         //confirm if parent reads are still available, otherwise nothing to do
         {
           for (uint32_t j = g.containment_offsets[i]; j < g.containment_offsets[i+1]; j++)
-            if (g.redundant[g.containments[j].dst] == false)
+            if (g.deletedReads[g.containments[j].dst] == false)
               available_parent_count++;
           if (available_parent_count == 0) continue;
         }
@@ -193,7 +193,7 @@ void identifyRedundantReads(graphcontainer &g, const algoParams &param, std::ofs
             uint32_t parentReadId = g.containments[j].dst;
             uint32_t parentReadLen = g.readseq[parentReadId].length();
 
-            if (g.redundant[parentReadId] == false)
+            if (g.deletedReads[parentReadId] == false)
             {
               //walk w.r.t. forward orientation of read string
               uint32_t revbit = (g.containments[j].rev == true) ? 1U : 0U;
@@ -249,7 +249,7 @@ void identifyRedundantReads(graphcontainer &g, const algoParams &param, std::ofs
             std::back_inserter(mmCommon));
 
         if (mmWalkRead.size() > 0 && 1.0 * mmCommon.size() / mmWalkRead.size() >= param.cutoff) {
-          g.redundant[i] = true;
+          g.deletedReads[i] = true;
           if (!param.logFileName.empty()) {
 #pragma omp critical
             log << g.umap_inverse[i] << "\tidentifyRedundantReads()\tREDUNDANT=T\tPARENTS=";
@@ -265,7 +265,7 @@ void identifyRedundantReads(graphcontainer &g, const algoParams &param, std::ofs
         for (uint32_t j = g.containment_offsets[i]; j < g.containment_offsets[i+1]; j++)
         {
           uint32_t parentReadId = g.containments[j].dst;
-          if (g.redundant[parentReadId] == false)
+          if (g.deletedReads[parentReadId] == false)
             if (!param.logFileName.empty()) {
 #pragma omp critical
               log << g.umap_inverse[parentReadId] << ", ";
@@ -289,12 +289,12 @@ void tipCleaning (graphcontainer &g, const algoParams &param, std::ofstream& log
   for (uint32_t i = 0; i < g.vertexCount; i++)
   {
     tipVertexIds.clear();
-    if (g.redundant[i >> 1] == true) continue;    //removed already
-    if (g.getDegree (i ^ 1) != 0) continue;       //not a tip if there are incoming edges
-    if (g.getDegree (i) > 1) continue;            //multiple out-edges
-    if (g.getDegree (i) == 0)  {                  //singleton vertex
+    if (g.deletedReads[i >> 1] == true) continue;     //removed already
+    if (g.getDegree (i ^ 1) != 0) continue;           //not a tip if there are incoming edges
+    if (g.getDegree (i) > 1) continue;                //multiple out-edges
+    if (g.getDegree (i) == 0)  {                      //singleton vertex without in and out neighbor
       if (!param.logFileName.empty()) log << g.umap_inverse[i >> 1] << "\ttipCleaning()\n";
-      g.redundant[i >> 1] = true;
+      g.deletedReads[i >> 1] = true;
       continue;
     }
 
@@ -306,7 +306,7 @@ void tipCleaning (graphcontainer &g, const algoParams &param, std::ofstream& log
     for (uint32_t j = 0; j < param.maxTipLen; j++)
     {
       uint32_t next = g.edges [g.offsets[currentVertex]].dst;
-      if (g.redundant[next >> 1] == false && g.getDegree (next ^ 1) == 1 && g.getDegree (next) == 1) {
+      if (g.deletedReads[next >> 1] == false && g.getDegree (next ^ 1) == 1 && g.getDegree (next) == 1) {
         tipVertexIds.push_back (next);
         currentVertex = next;
       }
@@ -318,7 +318,7 @@ void tipCleaning (graphcontainer &g, const algoParams &param, std::ofstream& log
     if (validTip) {
       for (uint32_t &i : tipVertexIds) {
         if (!param.logFileName.empty()) log << g.umap_inverse[i >> 1] << "\ttipCleaning()\n";
-        g.redundant[i >> 1] = true;
+        g.deletedReads[i >> 1] = true;
       }
     }
   }
@@ -327,7 +327,7 @@ void tipCleaning (graphcontainer &g, const algoParams &param, std::ofstream& log
 }
 
 /**
- * @param[in]   removeContainedReads      simply mark all contained reads as redundant
+ * @param[in]   removeContainedReads      option to simply mark all contained reads as redundant
  */
 void ovlgraph_simplify (bool removeContainedReads, graphcontainer &g, const algoParams &param)
 {
@@ -347,13 +347,14 @@ void ovlgraph_simplify (bool removeContainedReads, graphcontainer &g, const algo
 
   while (iter < param.max_iter)
   {
-    std::size_t countRedundantReads = std::count(g.redundant.begin(), g.redundant.end(), true);
-    std::size_t countContainedReads = std::count(g.contained.begin(), g.contained.end(), true);
-    if (countRedundantReads == countContainedReads) break;
+    if (param.maxTipLen > 0) {
+      tipCleaning (g, param, logFile);
+      g.index(); //re-index
+      g.printGraphStats();
+    }
 
     identifyRedundantReads (g, param, logFile);
     g.index(); //re-index
-
     g.printGraphStats();
 
     if (param.maxTipLen > 0) {
@@ -363,11 +364,6 @@ void ovlgraph_simplify (bool removeContainedReads, graphcontainer &g, const algo
     }
 
     iter++;
-
-    if (std::count(g.redundant.begin(), g.redundant.end(), true) == countRedundantReads) {
-      std::cerr << "INFO, ovlgraph_simplify() converged after " << iter << " iterations\n";
-      break; //converged
-    }
   }
 
   std::cerr << "INFO, ovlgraph_simplify() finished, printing final stats\n";
