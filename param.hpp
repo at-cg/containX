@@ -9,7 +9,7 @@ struct algoParams
                                   //minimum of the above two is used
   uint32_t k;                     //k-mer length (<=16)
   uint32_t fuzz;                  //fuzz parameter for transitive reduction (Myers 2005)
-  uint32_t max_iter;              //user-specified threshold on count of iterations
+  uint32_t iter;                  //user-specified threshold on count of iterations
   uint32_t maxTipLen;             //threshold for tip length (0 means disabled)
   uint32_t threads;               //thread count
   float d;                        //[0,1] sampling density
@@ -32,7 +32,7 @@ struct algoParams
     std::cerr << "INFO, printParams(), tip length cutoff = " << maxTipLen << "\n";
     std::cerr << "INFO, printParams(), d (density) = " << d << "\n";
     std::cerr << "INFO, printParams(), minimum fraction of minimizer match [0-1] = " << cutoff << "\n";
-    std::cerr << "INFO, printParams(), max_iter = " << max_iter << "\n";
+    std::cerr << "INFO, printParams(), iter = " << iter << "\n";
     std::cerr << "INFO, printParams(), hpc = " << std::boolalpha << hpc << "\n";
   }
 };

@@ -20,15 +20,15 @@ int main(int argc, char *argv[])
 
   //set parameters
   param.hpc = false;
-  param.fuzz = 100; //disable transitive reduction of edges by default
-  param.max_iter = 2; //upper bound for graph simplification iterations
+  param.fuzz = 100;   //for transitive reduction
+  param.iter = 2;     //iterations
   param.cutoff = 1.0; //[0-1]
   param.maxTipLen = 3;
   param.depthReadLen = 2, param.depthBaseCount = UINT32_MAX;
   param.threads = 1;
   param.maxContainmentDegree = UINT32_MAX; //disabled by default
   param.k = 16;
-  param.d = 2.0/param.k;
+  param.d = 0.25;
 
   while ((c = ketopt(&o, argc, argv, 1, "cC:d:D:Hi:I:l:L:m:n:s:t:T:w:W:", 0)) >= 0)
   {
@@ -39,12 +39,12 @@ int main(int argc, char *argv[])
     else if (c == 'f') param.fuzz = atoi(o.arg);
     else if (c == 'H') param.hpc = true;
     else if (c == 'i') min_ovlp_identity = atof(o.arg);
-    else if (c == 'I') param.max_iter = atoi(o.arg);
+    else if (c == 'I') param.iter = atoi(o.arg);
     else if (c == 'l') min_ovlp_len = atoi(o.arg);
     else if (c == 'm') param.cutoff = atof(o.arg);
     else if (c == 'n') param.dumpNonRedudantContainedReads = o.arg;
     else if (c == 'L') param.logFileName = o.arg;
-    else if (c == 's') param.d = 1.0 * atoi(o.arg) / param.k;
+    else if (c == 's') param.d = atof(o.arg);
     else if (c == 't') param.threads = atoi(o.arg);
     else if (c == 'T') param.maxTipLen = atoi(o.arg);
     else if (c == 'w') param.depthReadLen = atoi(o.arg);
@@ -58,8 +58,8 @@ int main(int argc, char *argv[])
     std::cerr << "  -l NUM      min overlap length, default " << min_ovlp_len << "\n";
     std::cerr << "  -i NUM      min overlap percentage identity [0.0-100.0], default " << min_ovlp_identity << "\n";
     std::cerr << "  -t NUM      thread count, default " << param.threads << "\n";
-    std::cerr << "  -I NUM      max count of iterations, default " << param.max_iter << "\n";
-    std::cerr << "  -s NUM      sample k-mer with NUM/k probability, default " << param.d*param.k << "\n";
+    std::cerr << "  -I NUM      count of iterations, default " << param.iter << "\n";
+    std::cerr << "  -s NUM      sample k-mer with NUM probability, default " << param.d << "\n";
     std::cerr << "  -m NUM      min fraction of minimizer matches for redundant contained reads, default " << param.cutoff << "\n";
     std::cerr << "  -w NUM      walk length cutoff as a factor of read length, default " << param.depthReadLen << "\n";
     std::cerr << "  -W NUM      walk length cutoff in terms of absoute base count, default " << param.depthBaseCount << "\n";
@@ -78,6 +78,7 @@ int main(int argc, char *argv[])
   assert (min_ovlp_identity >= 0.0);
   assert (min_ovlp_identity <= 100.0);
   assert (param.cutoff >= 0.0 && param.cutoff <= 1.0);
+  assert (param.d > 0.0 && param.d <= 1.0);
   assert (param.depthReadLen > 0);
   assert (param.depthBaseCount > 0);
 

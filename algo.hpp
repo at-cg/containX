@@ -348,7 +348,7 @@ void ovlgraph_simplify (bool removeContainedReads, graphcontainer &g, const algo
   g.printGraphStats();
   uint32_t iter = 0;
 
-  while (iter < param.max_iter)
+  while (iter < param.iter)
   {
     if (param.maxTipLen > 0) {
       tipCleaning (g, param, logFile);

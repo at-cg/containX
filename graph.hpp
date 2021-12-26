@@ -578,6 +578,7 @@ void ovlgraph_gen(const char *readfilename, const char *paffilename, float min_o
   g.initVectors(readfilename);
   g.index();
   g.printGraphStats();
+
   std::cerr << "INFO, ovlgraph_gen() finished\n";
 }
 
