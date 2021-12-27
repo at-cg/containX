@@ -138,13 +138,21 @@ class graphcontainer
     void printGraphStats ()
     {
       std::cerr << "INFO, printGraphStats(), graph has " << edges.size() << " edges\n";
+      std::cerr << "INFO, printGraphStats(), multiedges : " << std::boolalpha << checkMultiEdges() << ", symmetric : " << checkSymmetry() << "\n";
       std::cerr << "INFO, printGraphStats(), graph has " << vertexCount << " vertices from " << readCount << " reads in total\n";
       std::cerr << "INFO, printGraphStats(), " << std::count(contained.begin(), contained.end(), true) << " reads are marked as contained in graph\n";
       uint32_t redundantcontainedReads = 0;
       for (uint32_t i = 0; i < readCount; i++)
         if (contained[i] == true && deletedReads[i] == true)
           redundantcontainedReads++;
-      std::cerr << "INFO, printGraphStats(), " << redundantcontainedReads << " reads are marked as redundant and contained in graph\n";
+      std::cerr << "INFO, printGraphStats(), " << redundantcontainedReads << " reads are marked as deleted and contained in graph\n";
+
+      uint32_t junctionReads = 0;
+      for (uint32_t i = 0; i < readCount; i++)
+        if (contained[i] == true && deletedReads[i] == false)
+          if (getDegree(i << 1 | 0) > 1 || getDegree(i << 1 | 1) > 1)
+            junctionReads++;
+      std::cerr << "INFO, printGraphStats(), " << junctionReads << " contained reads contribute to junction nodes\n";
     }
 
     //index edges and containments
@@ -338,6 +346,7 @@ class graphcontainer
     }
 
     //algorithm motivated from Myers 2005
+    //assumes indexing is done and edges are sorted
     uint32_t transitiveReduction(int fuzz)
     {
       //mark 0 : default, 1 : in-play, 2 : reduced
@@ -373,7 +382,7 @@ class graphcontainer
             uint32_t x = edges[k].dst;
             uint32_t sum = edges[j].len + edges[k].len; // v->w + w->x
             if (sum > longest) break;
-            if (mark[x] == 1 && sum < len[x] + fuzz && sum + fuzz > len[x])
+            if (mark[x] == 1 && sum <= len[x] + fuzz && sum + fuzz >= len[x])
               mark [x] = 2; //eliminate edge v -> x
           }
         }
@@ -391,6 +400,45 @@ class graphcontainer
       std::cerr << "INFO, transitiveReduction(), " << n_reduced << " edges marked for deletion\n";
 
       return n_reduced;
+    }
+
+    //assumes indexing is done and edges are sorted
+    bool checkMultiEdges ()
+    {
+      std::vector<bool> markAdj (vertexCount, false);
+      for (uint32_t i = 0; i < vertexCount; i++)
+      {
+        if (getDegree(i) <= 1) continue;
+        for (uint32_t j = offsets[i]; j < offsets[i+1]; j++)
+        {
+          if (markAdj [edges[j].dst] == true) return true; //multi
+          markAdj [edges[j].dst] = true;
+        }
+        for (uint32_t j = offsets[i]; j < offsets[i+1]; j++)
+        {
+          markAdj [edges[j].dst] = false; //reset for next iteration
+        }
+      }
+
+      return false;
+    }
+
+    bool checkSymmetry ()
+    {
+      for (uint32_t i = 0; i < edges.size(); i++)
+      {
+        //u->v
+        uint32_t u = edges[i].src, v = edges[i].dst;
+        uint32_t u_ = u^1, v_ = v^1;
+        uint32_t j;
+        //check for v_ -> u_
+        for (j = offsets[v_]; j < offsets[v_ +1]; j++)
+        {
+          if (edges[j].dst == u_) break;
+        }
+        if (j == offsets[v_ +1]) return false;
+      }
+      return true;
     }
 };
 
@@ -591,7 +639,8 @@ void printContainmentDegreeDistribution (graphcontainer &g, const std::string &f
 {
   uint32_t maxDegree = 0;
   for (uint32_t i = 0; i < g.readCount; i++)
-    maxDegree = std::max (maxDegree, g.getContaintmentDegree(i));
+    if (g.deletedReads[i] == false)
+      maxDegree = std::max (maxDegree, g.getContaintmentDegree(i));
 
   std::vector<uint32_t> distribution(maxDegree+1, 0);
 
@@ -613,12 +662,36 @@ void printDegreeDistribution (graphcontainer &g, const std::string &filename)
 {
   uint32_t maxDegree = 0;
   for (uint32_t i = 0; i < g.vertexCount; i++)
-    maxDegree = std::max (maxDegree, g.getDegree(i));
+    if (g.deletedReads[i>>1] == false)
+      maxDegree = std::max (maxDegree, g.getDegree(i));
 
   std::vector<uint32_t> distribution(maxDegree+1, 0);
 
   for (uint32_t i = 0; i < g.vertexCount; i++)
     if (g.deletedReads[i>>1] == false)
+      distribution[g.getDegree(i)]++;
+
+  //write to file
+  std::ofstream outFile(filename);
+  for (const auto &e : distribution) outFile << e << "\n";
+}
+
+/**
+ * the following function prints
+ * distribution of vertex out-degree in the graph
+ * write to file Degree.txt (overwrite if already exists)
+ */
+void printDegreeDistributionOnlyContainedVertices (graphcontainer &g, const std::string &filename)
+{
+  uint32_t maxDegree = 0;
+  for (uint32_t i = 0; i < g.vertexCount; i++)
+    if (g.contained[i>>1]==true && g.deletedReads[i>>1]==false)
+      maxDegree = std::max (maxDegree, g.getDegree(i));
+
+  std::vector<uint32_t> distribution(maxDegree+1, 0);
+
+  for (uint32_t i = 0; i < g.vertexCount; i++)
+    if (g.contained[i>>1]==true && g.deletedReads[i>>1]==false)
       distribution[g.getDegree(i)]++;
 
   //write to file

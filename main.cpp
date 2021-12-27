@@ -30,7 +30,7 @@ int main(int argc, char *argv[])
   param.k = 16;
   param.d = 0.25;
 
-  while ((c = ketopt(&o, argc, argv, 1, "cC:d:D:Hi:I:l:L:m:n:s:t:T:w:W:", 0)) >= 0)
+  while ((c = ketopt(&o, argc, argv, 1, "cC:d:D:f:Hi:I:l:L:m:n:s:t:T:w:W:", 0)) >= 0)
   {
     if (c == 'c') removeAllContainedReads = true;
     else if (c == 'C') param.maxContainmentDegree = atoi(o.arg);
@@ -111,11 +111,11 @@ int main(int argc, char *argv[])
   printContainmentDegreeDistribution (g, "ContainmentDegree.afterSimplify.txt");
   printDegreeDistribution (g, "Degree.afterSimplify.txt");
   printEdgesDOTFormat (g, "edges.afterSimplify.DOT");
+  printDegreeDistributionOnlyContainedVertices(g, "printDegreeDistributionOnlyContainedVertices.txt");
 #endif
 
   g.outputGFA (param.gfadumpfilename, printReadStrings);
   g.outputNonRedudantContainedReads (param.dumpNonRedudantContainedReads);
-
 
   //log complete command given by user
   fprintf(stderr, "INFO, %s(), CMD:", __func__);
