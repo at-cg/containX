@@ -20,7 +20,7 @@ int main(int argc, char *argv[])
 
   //set parameters
   param.hpc = false;
-  param.fuzz = 100;   //for transitive reduction
+  param.fuzz = 0;     //for transitive reduction
   param.iter = 2;     //iterations
   param.cutoff = 1.0; //[0-1]
   param.maxTipLen = 3;
