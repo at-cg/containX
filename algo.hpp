@@ -339,7 +339,7 @@ void ovlgraph_simplify (bool removeContainedReads, graphcontainer &g, const algo
   if (removeContainedReads) g.removeContainedReads (param, logFile);
 
   g.index(); //indexing is needed prior to transitive reduction
-  g.transitiveReduction (param.fuzz);
+  g.transitiveReduction (param.fuzz, logFile);
   g.index(); //re-index
 
   //check redundancy of contained reads

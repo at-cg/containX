@@ -66,7 +66,7 @@ int main(int argc, char *argv[])
     std::cerr << "  -H          use homopolymer-compressed k-mer\n";
     std::cerr << "  -c          simply mark all contained reads as redundant\n";
     std::cerr << "  -C NUM      mark reads contained in >NUM reads as redundant, default " << param.maxContainmentDegree << "\n";
-    std::cerr << "  -f NUM      fuzz value during transitive reduction, default " << param.fuzz << "\n";
+    std::cerr << "  -f NUM      fuzz value during transitive reduction, default " << param.fuzz << " (-1 disables reduction)\n";
     std::cerr << "  -T NUM      threshold for tip length removal, default " << param.maxTipLen << ", set 0 to disable\n";
     std::cerr << "  -n FILE     dump read ids of non-redundant contained reads\n";
     std::cerr << "  -L FILE     dump algorithm log\n";

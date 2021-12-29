@@ -172,7 +172,12 @@ class graphcontainer
       }
 
       std::sort (edges.begin(), edges.end(), [](const graphArc &a, const graphArc &b) {
-          return std::tie (a.src, a.len) < std::tie (b.src, b.len);});
+          return std::tie (a.src, a.len, a.dst) < std::tie (b.src, b.len, b.dst);});
+
+      //make sure there are no duplicate entries
+      auto last = std::unique (edges.begin(), edges.end(), [](const graphArc &a, const graphArc &b) {
+          return std::tie (a.src, a.len, a.dst) == std::tie (b.src, b.len, b.dst);});
+      assert (last == edges.end());
 
       /**
        * Build offsets array such that out-edges
@@ -230,6 +235,16 @@ class graphcontainer
       assert (src < vertexCount);
 
       return offsets[src + 1] - offsets[src];
+    }
+
+    //return maximum degree value in graph
+    uint32_t maxDegree () const
+    {
+      uint32_t maxdeg = 0;
+      for (uint32_t i = 0; i < vertexCount; i++)
+        maxdeg = std::max (maxdeg, getDegree(i));
+
+      return maxdeg;
     }
 
     //count of reads containing the read 'src'
@@ -347,25 +362,24 @@ class graphcontainer
 
     //algorithm motivated from Myers 2005
     //assumes indexing is done and edges are sorted
-    uint32_t transitiveReduction(int fuzz)
+    //TODO: revise this for multi-graphs
+    uint32_t transitiveReduction(int fuzz, std::ofstream& log)
     {
+      if (fuzz < 0) return 0U; //reduction is disabled by user
+
       //mark 0 : default, 1 : in-play, 2 : reduced
-      std::vector<uint8_t> mark (vertexCount, 0);
+      std::vector<uint8_t> mark (maxDegree(), 0);
+
       //save length of edge from vertex being considered
-      std::vector<uint32_t> len (vertexCount, 0);
       uint32_t n_reduced = 0;
 
       for (uint32_t v = 0; v < vertexCount; v++)
       {
-        uint32_t v_degree = getDegree (v);
-        if (v_degree == 0) continue;
+        if (getDegree (v) == 0) continue;
 
         //neighborhood of v
-        for (uint32_t j = offsets[v]; j < offsets[v+1]; j++)
-        {
-          uint32_t w = edges[j].dst;
-          len[w] = edges[j].len;
-          mark[w] = 1; //in-play
+        for (uint32_t j = offsets[v]; j < offsets[v+1]; j++) {
+          mark [j - offsets[v]] = 1; //edge in-play
         }
 
         uint32_t longest = edges[offsets[v+1] - 1].len + fuzz;
@@ -374,7 +388,7 @@ class graphcontainer
         for (uint32_t j = offsets[v]; j < offsets[v+1]; j++)
         {
           uint32_t w = edges[j].dst;
-          if (mark[w] != 1) continue;
+          if (mark [j - offsets[v]] != 1) continue;
 
           //neighborhood of w
           for (uint32_t k = offsets[w]; k < offsets[w+1]; k++)
@@ -382,24 +396,61 @@ class graphcontainer
             uint32_t x = edges[k].dst;
             uint32_t sum = edges[j].len + edges[k].len; // v->w + w->x
             if (sum > longest) break;
-            if (mark[x] == 1 && sum <= len[x] + fuzz && sum + fuzz >= len[x])
-              mark [x] = 2; //eliminate edge v -> x
+
+            for (uint32_t l = offsets[v]; l < offsets[v+1]; l++)
+            {
+              if (edges[l].dst == x) { //v->x
+                if (mark [l - offsets[v]] == 1) { //in-play?
+                  if (sum <= edges[l].len + fuzz && sum + fuzz >= edges[l].len) { //length check
+                    mark [l - offsets[v]] = 2; //eliminate this edge
+                  }
+                }
+              }
+            }
           }
         }
 
         for (uint32_t j = offsets[v]; j < offsets[v+1]; j++)
         {
-          uint32_t w = edges[j].dst;
-          if (mark[w] == 2) {
+          if (mark[j - offsets[v]] == 2)
             edges[j].del = true, n_reduced++;
-          }
-          mark[w] = 0; //not in-play any more
+
+          mark[j - offsets[v]] = 0; //edge is not in-play anymore
         }
       }
 
       std::cerr << "INFO, transitiveReduction(), " << n_reduced << " edges marked for deletion\n";
 
+      /**
+       * Ideally transitive reduction algorithm should preserve symmetry, but
+       * it is not guaranteed if overlapper has <100% recall
+       */
+      ensureSymmetry (n_reduced);
+      std::cerr << "INFO, transitiveReduction(), total " << n_reduced << " edges marked for deletion after ensuring symmetry\n";
+
       return n_reduced;
+    }
+
+    void ensureSymmetry (uint32_t &n_reduced)
+    {
+      for (uint32_t i = 0, j = 0; i < edges.size(); i++)
+      {
+        if (edges[i].del == true) continue;
+
+        //u->v
+        uint32_t u = edges[i].src, v = edges[i].dst;
+        uint32_t u_rev = u^1U, v_rev = v^1U;
+        //check for v_rev -> u_rev
+        for (j = offsets[v_rev]; j < offsets[v_rev +1]; j++)
+        {
+          assert (edges[j].src == v_rev);
+          if (edges[j].dst == u_rev && edges[j].ov_dst == edges[i].ov_src && edges[j].del == false) break; //found
+        }
+        if (j == offsets[v_rev +1]) {
+          edges[i].del = true;
+          n_reduced++;
+        }
+      }
     }
 
     //assumes indexing is done and edges are sorted
@@ -423,23 +474,24 @@ class graphcontainer
       return false;
     }
 
+    //assumes indexing is done and edges are sorted
     bool checkSymmetry ()
     {
-      for (uint32_t i = 0; i < edges.size(); i++)
+      for (uint32_t i = 0, j = 0; i < edges.size(); i++)
       {
         //u->v
         uint32_t u = edges[i].src, v = edges[i].dst;
-        uint32_t u_ = u^1, v_ = v^1;
-        uint32_t j;
-        //check for v_ -> u_
-        for (j = offsets[v_]; j < offsets[v_ +1]; j++)
+        uint32_t u_rev = u^1, v_rev = v^1;
+        //check for v_rev -> u_rev
+        for (j = offsets[v_rev]; j < offsets[v_rev +1]; j++)
         {
-          if (edges[j].dst == u_) break;
+          if (edges[j].dst == u_rev && edges[j].ov_dst == edges[i].ov_src) break;
         }
-        if (j == offsets[v_ +1]) return false;
+        if (j == offsets[v_rev +1]) return false;
       }
       return true;
     }
+
 };
 
 #warning "we assume that overlapper skipped dual mappings, minimap2 overlapping module skips by default"

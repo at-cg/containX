@@ -8,7 +8,7 @@ struct algoParams
   uint32_t depthBaseCount;        //how far to traverse while collecting minimizers, absolute base count
                                   //minimum of the above two is used
   uint32_t k;                     //k-mer length (<=16)
-  uint32_t fuzz;                  //fuzz parameter for transitive reduction (Myers 2005)
+  int fuzz;                       //fuzz parameter for transitive reduction (Myers 2005)
   uint32_t iter;                  //user-specified threshold on count of iterations
   uint32_t maxTipLen;             //threshold for tip length (0 means disabled)
   uint32_t threads;               //thread count
