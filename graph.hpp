@@ -147,12 +147,21 @@ class graphcontainer
           redundantcontainedReads++;
       std::cerr << "INFO, printGraphStats(), " << redundantcontainedReads << " reads are marked as deleted and contained in graph\n";
 
-      uint32_t junctionReads = 0;
-      for (uint32_t i = 0; i < readCount; i++)
+      uint32_t junctionReads, i;
+
+      for (i = 0, junctionReads = 0; i < readCount; i++)
+        if (deletedReads[i] == false)
+          if (getDegree(i << 1 | 0) > 1 || getDegree(i << 1 | 1) > 1)
+            junctionReads++;
+      std::cerr << "INFO, printGraphStats(), " << junctionReads << " reads contribute to junction nodes\n";
+
+      for (i = 0, junctionReads = 0; i < readCount; i++)
         if (contained[i] == true && deletedReads[i] == false)
           if (getDegree(i << 1 | 0) > 1 || getDegree(i << 1 | 1) > 1)
             junctionReads++;
       std::cerr << "INFO, printGraphStats(), " << junctionReads << " contained reads contribute to junction nodes\n";
+
+
     }
 
     //index edges and containments

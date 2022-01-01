@@ -5,6 +5,7 @@
 #include "common.hpp"
 #include "graph.hpp"
 #include "param.hpp"
+#include "other_algo.hpp"
 #include <omp.h>
 
 /**
@@ -144,7 +145,7 @@ void identifyRedundantReads(graphcontainer &g, const algoParams &param, std::ofs
 
     //number ids of reads were assigned in the order they were found in paf file
     //static scheduling with chunk size one is preferred as
-    //reads with lower ids may have more overlaps 
+    //reads with lower ids may have more overlaps
 #pragma omp for schedule(static, 1)
     for (uint32_t i = 0; i < g.readCount; i++)
     {
@@ -356,7 +357,10 @@ void ovlgraph_simplify (bool removeContainedReads, graphcontainer &g, const algo
       g.printGraphStats();
     }
 
-    identifyRedundantReads (g, param, logFile);
+    if (param.runHui2016)
+      identifyRedundantReadsHuiEtAl (g, param, logFile); //implemented for benchmarking
+    else
+      identifyRedundantReads (g, param, logFile); //our algorithm
     g.index(); //re-index
     g.printGraphStats();
 

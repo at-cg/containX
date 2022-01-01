@@ -29,8 +29,9 @@ int main(int argc, char *argv[])
   param.maxContainmentDegree = UINT32_MAX; //disabled by default
   param.k = 16;
   param.d = 0.25;
+  param.runHui2016 = false;
 
-  while ((c = ketopt(&o, argc, argv, 1, "cC:d:D:f:Hi:I:l:L:m:n:s:t:T:w:W:", 0)) >= 0)
+  while ((c = ketopt(&o, argc, argv, 1, "cC:d:D:f:hHi:I:l:L:m:n:s:t:T:w:W:", 0)) >= 0)
   {
     if (c == 'c') removeAllContainedReads = true;
     else if (c == 'C') param.maxContainmentDegree = atoi(o.arg);
@@ -49,6 +50,7 @@ int main(int argc, char *argv[])
     else if (c == 'T') param.maxTipLen = atoi(o.arg);
     else if (c == 'w') param.depthReadLen = atoi(o.arg);
     else if (c == 'W') param.depthBaseCount = atoi(o.arg);
+    else if (c == 'h') param.runHui2016 = true;
   }
 
   //print usage

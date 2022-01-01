@@ -15,6 +15,7 @@ struct algoParams
   float d;                        //[0,1] sampling density
   float cutoff;                   //what fraction of minimizers must match for redundancy
   bool hpc;                       //parse k-mers in homopolymer compressed space
+  bool runHui2016;                //for benchmarking
 
   //files for logging output or progress
   std::string gfadumpfilename; 
@@ -34,6 +35,7 @@ struct algoParams
     std::cerr << "INFO, printParams(), minimum fraction of minimizer match [0-1] = " << cutoff << "\n";
     std::cerr << "INFO, printParams(), iter = " << iter << "\n";
     std::cerr << "INFO, printParams(), hpc = " << std::boolalpha << hpc << "\n";
+    if (runHui2016) std::cerr << "INFO, printParams(), runHui2016 = " << std::boolalpha << runHui2016 << "\n";
   }
 };
 
