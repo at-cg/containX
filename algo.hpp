@@ -28,7 +28,7 @@ void computeMinimizersFromString(std::vector<uint32_t> &container, const std::st
   //'U' is for integer literal of type unsigned int
   uint32_t shift1 = 2*(param.k - 1), mask = (1U<<2*param.k) - 1, kmer = 0;
   if (param.k == 16) mask = UINT32_MAX; //corner case
-  float hashkmer;
+  uint32_t hashThreshold = UINT32_MAX * param.d;
 
   //adjust boundary by k-1 characters for parsing k-mers at junctions
   if (rev == false) {
@@ -63,8 +63,8 @@ void computeMinimizersFromString(std::vector<uint32_t> &container, const std::st
 
       if (l >= param.k)
       {
-        hashkmer = hash32(kmer, mask) * 1.0 / UINT32_MAX;
-        if (hashkmer < param.d) container.emplace_back(kmer);
+        if (hash32(kmer, mask) <= hashThreshold)
+          container.emplace_back(kmer);
       }
     }
     else {

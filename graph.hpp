@@ -503,8 +503,8 @@ class graphcontainer
 
 };
 
-#warning "we assume that overlapper skipped dual mappings, minimap2 overlapping module skips by default"
-#warning "substring overlaps which are not suffix-prefix are ignored, may need to relax this later"
+//note: we assume that overlapper skipped dual mappings, minimap2 overlapping module skips by default
+//note: substring overlaps which are not suffix-prefix are ignored, may need to relax this later
 void ovlgraph_gen(const char *readfilename, const char *paffilename, float min_ovlp_identity, int min_ovlp_len, graphcontainer &g)
 {
   //read input paf file

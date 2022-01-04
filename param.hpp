@@ -22,6 +22,22 @@ struct algoParams
   std::string dumpNonRedudantContainedReads;
   std::string logFileName;
 
+  void initParams ()
+  {
+    hpc = false;
+    fuzz = 0;     //for transitive reduction
+    iter = 2;     //iterations
+    cutoff = 1.0; //[0-1]
+    maxTipLen = 3;
+    depthReadLen = 2;
+    depthBaseCount = UINT32_MAX; //unused by default
+    threads = 1;
+    maxContainmentDegree = UINT32_MAX; //disabled by default
+    k = 16;
+    d = 0.25;
+    runHui2016 = false;
+  }
+
   void printParams ()
   {
     std::cerr << "INFO, printParams(), maxContainmentDegree = " << maxContainmentDegree << "\n";

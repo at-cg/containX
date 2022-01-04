@@ -18,18 +18,8 @@ int main(int argc, char *argv[])
   bool removeAllContainedReads = false;
   algoParams param;
 
-  //set parameters
-  param.hpc = false;
-  param.fuzz = 0;     //for transitive reduction
-  param.iter = 2;     //iterations
-  param.cutoff = 1.0; //[0-1]
-  param.maxTipLen = 3;
-  param.depthReadLen = 2, param.depthBaseCount = UINT32_MAX;
-  param.threads = 1;
-  param.maxContainmentDegree = UINT32_MAX; //disabled by default
-  param.k = 16;
-  param.d = 0.25;
-  param.runHui2016 = false;
+  //initialize default values of various parameters
+  param.initParams();
 
   while ((c = ketopt(&o, argc, argv, 1, "cC:d:D:f:hHi:I:l:L:m:n:s:t:T:w:W:", 0)) >= 0)
   {
