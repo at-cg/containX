@@ -35,6 +35,7 @@ class graphArc
      * The above storage format makes it easy to export in GFA format
      * https://github.com/GFA-spec/GFA-spec/blob/master/GFA1.md#l-link-line
      */
+
 };
 
 /**
@@ -75,10 +76,6 @@ class graphcontainer
     std::vector<uint32_t> offsets; //for CSR-style indexing
     std::vector<containmentTuple> containments; //size = count of contained overlaps
     std::vector<uint32_t> containment_offsets; //for CSR-style indexing
-
-    //save user thresholds
-    float min_ovlp_identity;
-    int min_ovlp_len;
 
     //save fastq read identifier into hash table, and give it an integer id
     uint32_t addStringToMap(const std::string &str)
@@ -186,7 +183,7 @@ class graphcontainer
       //make sure there are no duplicate entries
       auto last = std::unique (edges.begin(), edges.end(), [](const graphArc &a, const graphArc &b) {
           return std::tie (a.src, a.len, a.dst) == std::tie (b.src, b.len, b.dst);});
-      assert (last == edges.end());
+      edges.erase (last, edges.end());
 
       /**
        * Build offsets array such that out-edges
@@ -321,127 +318,11 @@ class graphcontainer
       }
     }
 
-    //consider all contained reads as redundant and remove them from graph
-    void removeContainedReads(const algoParams &param, std::ofstream &log)
+
+    //remove u->v if v'->u' is already removed
+    void ensureSymmetry ()
     {
-      for (uint32_t i = 0; i < readCount; i++) {
-        if (deletedReads[i] == false && contained[i] == true) {
-          deletedReads[i] = true;
-          if (!param.logFileName.empty()) log << umap_inverse[i] << "\tremoveContainedReads()\n";
-        }
-      }
-
-      std::vector<graphArc> edges_new;
-
-      for (auto &e : edges)
-      {
-        //check if both end vertices of the edge are still available
-        if (deletedReads[e.src >> 1] == false && deletedReads[e.dst >> 1] == false)
-          edges_new.emplace_back(e);
-      }
-
-      edges = edges_new;
-      std::cerr << "INFO, removeContainedReads() finished\n";
-    }
-
-    //consider contained reads as redundant if their
-    //'containment degree' is > maxDegree
-    void removeContainedReadsAboveDegree(const algoParams &param, std::ofstream &log)
-    {
-      for (uint32_t i = 0; i < readCount; i++) {
-        if (getContaintmentDegree (i) > param.maxContainmentDegree && deletedReads[i] == false && contained[i] == true) {
-          deletedReads[i] = true;
-          if (!param.logFileName.empty()) log << umap_inverse[i] << "\tremoveContainedReadsAboveDegree()\n";
-        }
-      }
-
-
-      std::vector<graphArc> edges_new;
-
-      for (auto &e : edges)
-      {
-        //check if both end vertices of the edge are available
-        if (deletedReads[e.src >> 1] == false && deletedReads[e.dst >> 1] == false)
-          edges_new.emplace_back(e);
-      }
-
-      edges = edges_new;
-      std::cerr << "INFO, removeContainedReadsAboveDegree() finished\n";
-    }
-
-    //algorithm motivated from Myers 2005
-    //assumes indexing is done and edges are sorted
-    //TODO: revise this for multi-graphs
-    uint32_t transitiveReduction(int fuzz, std::ofstream& log)
-    {
-      if (fuzz < 0) return 0U; //reduction is disabled by user
-
-      //mark 0 : default, 1 : in-play, 2 : reduced
-      std::vector<uint8_t> mark (maxDegree(), 0);
-
-      //save length of edge from vertex being considered
       uint32_t n_reduced = 0;
-
-      for (uint32_t v = 0; v < vertexCount; v++)
-      {
-        if (getDegree (v) == 0) continue;
-
-        //neighborhood of v
-        for (uint32_t j = offsets[v]; j < offsets[v+1]; j++) {
-          mark [j - offsets[v]] = 1; //edge in-play
-        }
-
-        uint32_t longest = edges[offsets[v+1] - 1].len + fuzz;
-
-        //neighborhood of v
-        for (uint32_t j = offsets[v]; j < offsets[v+1]; j++)
-        {
-          uint32_t w = edges[j].dst;
-          if (mark [j - offsets[v]] != 1) continue;
-
-          //neighborhood of w
-          for (uint32_t k = offsets[w]; k < offsets[w+1]; k++)
-          {
-            uint32_t x = edges[k].dst;
-            uint32_t sum = edges[j].len + edges[k].len; // v->w + w->x
-            if (sum > longest) break;
-
-            for (uint32_t l = offsets[v]; l < offsets[v+1]; l++)
-            {
-              if (edges[l].dst == x) { //v->x
-                if (mark [l - offsets[v]] == 1) { //in-play?
-                  if (sum <= edges[l].len + fuzz && sum + fuzz >= edges[l].len) { //length check
-                    mark [l - offsets[v]] = 2; //eliminate this edge
-                  }
-                }
-              }
-            }
-          }
-        }
-
-        for (uint32_t j = offsets[v]; j < offsets[v+1]; j++)
-        {
-          if (mark[j - offsets[v]] == 2)
-            edges[j].del = true, n_reduced++;
-
-          mark[j - offsets[v]] = 0; //edge is not in-play anymore
-        }
-      }
-
-      std::cerr << "INFO, transitiveReduction(), " << n_reduced << " edges marked for deletion\n";
-
-      /**
-       * Ideally transitive reduction algorithm should preserve symmetry, but
-       * it is not guaranteed if overlapper has <100% recall
-       */
-      ensureSymmetry (n_reduced);
-      std::cerr << "INFO, transitiveReduction(), total " << n_reduced << " edges marked for deletion after ensuring symmetry\n";
-
-      return n_reduced;
-    }
-
-    void ensureSymmetry (uint32_t &n_reduced)
-    {
       for (uint32_t i = 0, j = 0; i < edges.size(); i++)
       {
         if (edges[i].del == true) continue;
@@ -460,6 +341,8 @@ class graphcontainer
           n_reduced++;
         }
       }
+
+      std::cerr << "INFO, ensureSymmetry() finished, " << n_reduced << " edges marked for deletion\n";
     }
 
     //assumes indexing is done and edges are sorted
@@ -505,7 +388,7 @@ class graphcontainer
 
 //note: we assume that overlapper skipped dual mappings, minimap2 overlapping module skips by default
 //note: substring overlaps which are not suffix-prefix are ignored, may need to relax this later
-void ovlgraph_gen(const char *readfilename, const char *paffilename, float min_ovlp_identity, int min_ovlp_len, graphcontainer &g)
+void ovlgraph_gen(const char *readfilename, const char *paffilename, const algoParams &param, graphcontainer &g)
 {
   //read input paf file
   paf_rec_t r;
@@ -515,16 +398,14 @@ void ovlgraph_gen(const char *readfilename, const char *paffilename, float min_o
     exit(1);
   }
 
-  std::cerr << "INFO, ovlgraph_gen(), min_ovlp_identity = " << min_ovlp_identity << "\n";
-  std::cerr << "INFO, ovlgraph_gen(), min_ovlp_len = " << min_ovlp_len << "\n";
   std::cerr << "INFO, ovlgraph_gen(), reading paf records from " << paffilename << "\n";
 
   uint64_t totPaf = 0, validPaf = 0, suffPrefPaf = 0, containedPaf = 0;
   while (paf_read(fp, &r) >= 0) {
     totPaf++;
-    if (r.ml * 100.0 / r.bl >= min_ovlp_identity)
+    if (r.ml * 100.0 / r.bl >= param.min_ovlp_identity)
     {
-      if (std::min (r.te - r.ts, r.qe - r.qs) >= min_ovlp_len)
+      if (std::min (r.te - r.ts, r.qe - r.qs) >= param.min_ovlp_len)
       {
         validPaf++;
         std::string qname = r.qn;
@@ -682,8 +563,7 @@ void ovlgraph_gen(const char *readfilename, const char *paffilename, float min_o
   std::cerr << "INFO, ovlgraph_gen(), " << suffPrefPaf << " records belonged to proper suffix-prefix overlaps\n";
 
   std::for_each(g.edges.begin(), g.edges.end(), [](graphArc &e){e.del = false;});
-  g.min_ovlp_len = min_ovlp_len;
-  g.min_ovlp_identity = min_ovlp_identity;
+  assert (g.edges.size() <= UINT32_MAX); //otherwise our implementation may not work
   g.initVectors(readfilename);
   g.index();
   g.printGraphStats();
@@ -773,6 +653,231 @@ void printEdgesDOTFormat (graphcontainer &g, const std::string &filename)
     if (g.deletedReads[e.src >>1] == false && g.deletedReads[e.dst >>1] == false && e.del == false)
       outFile << e.src << " -> " << e.dst << ";\n";
   outFile << "}\n";
+}
+
+//consider all contained reads as redundant and remove them from graph
+void removeAllContainedReads(graphcontainer &g, const algoParams &param, std::ofstream &log)
+{
+  for (uint32_t i = 0; i < g.readCount; i++) {
+    if (g.deletedReads[i] == true || g.contained[i] == false) continue;
+    g.deletedReads[i] = true;
+    if (!param.logFileName.empty()) log << g.umap_inverse[i] << "\tremoveAllContainedReads()\n";
+  }
+
+  std::vector<graphArc> edges_new;
+
+  for (auto &e : g.edges)
+  {
+    //check if both end vertices of the edge are still available
+    if (g.deletedReads[e.src >> 1] == false && g.deletedReads[e.dst >> 1] == false)
+      edges_new.emplace_back(e);
+  }
+
+  g.edges = edges_new;
+  std::cerr << "INFO, removeAllContainedReads() finished\n";
+}
+
+//consider contained reads as redundant if their
+//'containment degree' is > maxDegree
+//or their length is below user-specified cutoff
+void removeSomeContainedReads(graphcontainer &g, const algoParams &param, std::ofstream &log)
+{
+  for (uint32_t i = 0; i < g.readCount; i++) {
+    if (g.deletedReads[i] == true || g.contained[i] == false) continue;
+
+    bool cond1 = g.getContaintmentDegree (i) > param.maxContainmentDegree;
+    bool cond2 = g.readseq[i].length() < param.minContainedReadLength;
+    if (cond1 || cond2) {
+      g.deletedReads[i] = true;
+      if (!param.logFileName.empty()) log << g.umap_inverse[i] << "\tremoveSomeContainedReads()\n";
+    }
+  }
+
+  std::vector<graphArc> edges_new;
+
+  for (auto &e : g.edges)
+  {
+    //check if both end vertices of the edge are available
+    if (g.deletedReads[e.src >> 1] == false && g.deletedReads[e.dst >> 1] == false)
+      edges_new.emplace_back(e);
+  }
+
+  g.edges = edges_new;
+  std::cerr << "INFO, removeSomeContainedReads() finished\n";
+}
+
+//remove short overlaps for a read
+//overlap must be short for both src and destination verticesfor removal
+void removeShortOverlaps(graphcontainer &g, const algoParams &param, std::ofstream &log)
+{
+  uint32_t n_reduced = 0;
+
+  for (uint32_t i = 0; i < g.edges.size(); i++)
+  {
+    uint32_t src = g.edges[i].src;
+    uint32_t dst = g.edges[i].dst;
+    uint32_t dst_rev = dst ^ 1;
+
+    uint32_t maxOvlsrc = 0;
+    for (uint32_t j = g.offsets[src]; j < g.offsets[src+1]; j++)
+      maxOvlsrc = std::max (g.edges[j].ov_src, maxOvlsrc);
+
+    uint32_t maxOvldstr = 0;
+    for (uint32_t j = g.offsets[dst_rev]; j < g.offsets[dst_rev+1]; j++)
+      maxOvldstr = std::max (g.edges[j].ov_src, maxOvldstr);
+
+    if (g.edges[i].ov_src < maxOvlsrc * param.min_ovlp_ratio && g.edges[i].ov_src < maxOvldstr * param.min_ovlp_ratio)
+      g.edges[i].del = true, n_reduced++;
+  }
+
+  std::cerr << "INFO, removeShortOverlaps(), " << n_reduced << " edges marked for deletion\n";
+  assert(g.checkSymmetry());
+}
+
+//algorithm motivated from Myers 2005
+//assumes indexing is done and edges are sorted
+//revised to handle multi-graphs
+uint32_t transitiveReduction(graphcontainer &g, int fuzz, std::ofstream& log)
+{
+  if (fuzz < 0) return 0U; //reduction is disabled by user
+
+  //mark 0 : default, 1 : in-play, 2 : reduced
+  std::vector<uint8_t> mark (g.maxDegree(), 0);
+
+  //save length of edge from vertex being considered
+  uint32_t n_reduced = 0;
+
+  for (uint32_t v = 0; v < g.vertexCount; v++)
+  {
+    if (g.getDegree (v) == 0) continue;
+
+    //neighborhood of v
+    for (uint32_t j = g.offsets[v]; j < g.offsets[v+1]; j++) {
+      mark [j - g.offsets[v]] = 1; //edge in-play
+    }
+
+    uint32_t longest = g.edges[g.offsets[v+1] - 1].len + fuzz;
+
+    //neighborhood of v
+    for (uint32_t j = g.offsets[v]; j < g.offsets[v+1]; j++)
+    {
+      uint32_t w = g.edges[j].dst;
+      if (mark [j - g.offsets[v]] != 1) continue;
+
+      //neighborhood of w
+      for (uint32_t k = g.offsets[w]; k < g.offsets[w+1]; k++)
+      {
+        uint32_t x = g.edges[k].dst;
+        uint32_t sum = g.edges[j].len + g.edges[k].len; // v->w + w->x
+        if (sum > longest) break;
+
+        for (uint32_t l = g.offsets[v]; l < g.offsets[v+1]; l++)
+        {
+          if (g.edges[l].dst == x) { //v->x
+            if (mark [l - g.offsets[v]] == 1) { //in-play?
+              if (sum <= g.edges[l].len + fuzz && sum + fuzz >= g.edges[l].len) { //length check
+                mark [l - g.offsets[v]] = 2; //eliminate this edge
+              }
+            }
+          }
+        }
+      }
+    }
+
+    for (uint32_t j = g.offsets[v]; j < g.offsets[v+1]; j++)
+    {
+      if (mark[j - g.offsets[v]] == 2)
+        g.edges[j].del = true, n_reduced++;
+
+      mark[j - g.offsets[v]] = 0; //edge is not in-play anymore
+    }
+  }
+
+  std::cerr << "INFO, transitiveReduction(), " << n_reduced << " edges marked for deletion\n";
+
+  /**
+   * Ideally transitive reduction algorithm should preserve symmetry, but
+   * it is not guaranteed if overlapper has <100% recall
+   */
+  g.ensureSymmetry ();
+
+  return n_reduced;
+}
+
+void tipCleaning (graphcontainer &g, const algoParams &param, std::ofstream& log)
+{
+  std::vector<uint32_t> tipVertexIds;
+
+  for (uint32_t i = 0; i < g.vertexCount; i++)
+  {
+    tipVertexIds.clear();
+    if (g.deletedReads[i >> 1] == true) continue;     //removed already
+    if (g.getDegree (i ^ 1) != 0) continue;           //not a tip if there are incoming edges
+    if (g.getDegree (i) > 1) continue;                //multiple out-edges
+    if (g.getDegree (i) == 0)  {                      //singleton vertex without in and out neighbor
+      if (!param.logFileName.empty()) log << g.umap_inverse[i >> 1] << "\ttipCleaning()\n";
+      g.deletedReads[i >> 1] = true;
+      continue;
+    }
+
+    tipVertexIds.push_back(i);
+    uint32_t chainLen = 1; //in term of edge counts
+    uint32_t currentVertex = i;
+    bool validTip = false;
+
+    for (uint32_t j = 0; j < param.maxTipLen; j++)
+    {
+      uint32_t next = g.edges [g.offsets[currentVertex]].dst;
+      if (g.deletedReads[next >> 1] == false && g.getDegree (next ^ 1) == 1 && g.getDegree (next) == 1) {
+        tipVertexIds.push_back (next);
+        currentVertex = next;
+      }
+      else {
+        validTip = true; //tip is short enough for pruning
+      }
+    }
+
+    if (validTip) {
+      for (uint32_t &i : tipVertexIds) {
+        if (!param.logFileName.empty()) log << g.umap_inverse[i >> 1] << "\ttipCleaning()\n";
+        g.deletedReads[i >> 1] = true;
+      }
+    }
+  }
+
+  std::cerr << "INFO, tipCleaning() finished\n";
+}
+
+/*
+ * Function does the following to clean graph:
+ *   Apply minimum contained read length, maximum parent count thresholds
+ *   Apply minimum overlap ratio threshold
+ *   Transitive reduction
+ *   Clean tips
+ * Return the graph indexed
+ */
+void graphCleanup(graphcontainer &g, const algoParams &param, std::ofstream& log)
+{
+  g.printGraphStats();
+
+  if (param.removeAllContainedReads) removeAllContainedReads (g, param, log);
+  else removeSomeContainedReads(g, param, log);
+  g.index();
+  g.printGraphStats();
+
+  removeShortOverlaps(g, param, log);
+  g.index();
+  g.printGraphStats();
+
+  transitiveReduction (g, param.fuzz, log);
+  g.index(); //re-index
+  g.printGraphStats();
+
+  if (param.maxTipLen > 0) {
+    tipCleaning (g, param, log);
+    g.index(); //re-index
+    g.printGraphStats();
+  }
 }
 
 #endif

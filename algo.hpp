@@ -131,11 +131,8 @@ uint32_t dfs_procedure (const graphcontainer &g, uint32_t src_vertex, uint32_t b
   return bases_processed;
 }
 
-void identifyRedundantReads(graphcontainer &g, const algoParams &param, std::ofstream& log)
+void identifyRedundantReads(const graphcontainer &g, std::vector<bool> &redundant, const algoParams &param, std::ofstream& log)
 {
-
-  //TODO: reconsider if we should process contained reads in a particular order
-
 #pragma omp parallel
   {
     std::vector<uint32_t> mmWalkRead; //walk along same orientation as the read, and collect minimizers
@@ -157,14 +154,6 @@ void identifyRedundantReads(graphcontainer &g, const algoParams &param, std::ofs
 
       if (g.contained[i] == true && g.deletedReads[i] == false)
       {
-        //confirm if parent reads are still available, otherwise nothing to do
-        {
-          for (uint32_t j = g.containment_offsets[i]; j < g.containment_offsets[i+1]; j++)
-            if (g.deletedReads[g.containments[j].dst] == false)
-              available_parent_count++;
-          if (available_parent_count == 0) continue;
-        }
-
         //user-specified depth during DFS in terms of count of bases
         uint32_t depth_bases = std::min<uint32_t>(param.depthReadLen * g.readseq[i].length(), param.depthBaseCount);
 
@@ -253,16 +242,16 @@ void identifyRedundantReads(graphcontainer &g, const algoParams &param, std::ofs
             std::back_inserter(mmCommon));
 
         if (mmWalkRead.size() > 0 && 1.0 * mmCommon.size() / mmWalkRead.size() >= param.cutoff) {
-          g.deletedReads[i] = true;
+          redundant[i] = true;
           if (!param.logFileName.empty()) {
 #pragma omp critical
-            log << g.umap_inverse[i] << "\tidentifyRedundantReads()\tREDUNDANT=T\tPARENTS=";
+            log << g.umap_inverse.at(i) << "\tidentifyRedundantReads()\tREDUNDANT=T\tPARENTS=";
           }
         }
         else {
           if (!param.logFileName.empty()) {
 #pragma omp critical
-            log << g.umap_inverse[i] << "\tidentifyRedundantReads()\tREDUNDANT=F\tPARENTS=";
+            log << g.umap_inverse.at(i) << "\tidentifyRedundantReads()\tREDUNDANT=F\tPARENTS=";
           }
         }
 
@@ -272,7 +261,7 @@ void identifyRedundantReads(graphcontainer &g, const algoParams &param, std::ofs
           if (g.deletedReads[parentReadId] == false)
             if (!param.logFileName.empty()) {
 #pragma omp critical
-              log << g.umap_inverse[parentReadId] << ", ";
+              log << g.umap_inverse.at(parentReadId) << ", ";
             }
         }
         if (!param.logFileName.empty()) {
@@ -286,81 +275,104 @@ void identifyRedundantReads(graphcontainer &g, const algoParams &param, std::ofs
   std::cerr << "INFO, identifyRedundantReads() finished\n";
 }
 
-void tipCleaning (graphcontainer &g, const algoParams &param, std::ofstream& log)
+//disabled, not being used
+void identifyRedundantEdges(graphcontainer &g, const algoParams &param)
 {
-  std::vector<uint32_t> tipVertexIds;
+  uint32_t n_reduced = 0;
 
-  for (uint32_t i = 0; i < g.vertexCount; i++)
   {
-    tipVertexIds.clear();
-    if (g.deletedReads[i >> 1] == true) continue;     //removed already
-    if (g.getDegree (i ^ 1) != 0) continue;           //not a tip if there are incoming edges
-    if (g.getDegree (i) > 1) continue;                //multiple out-edges
-    if (g.getDegree (i) == 0)  {                      //singleton vertex without in and out neighbor
-      if (!param.logFileName.empty()) log << g.umap_inverse[i >> 1] << "\ttipCleaning()\n";
-      g.deletedReads[i >> 1] = true;
-      continue;
-    }
+    std::vector<uint32_t> mmWalkContainedRead; //walk from source via edge to contained read
+    std::vector<uint32_t> mmWalkNonContainedReads; //walk from source via edges to non-contained read
+    std::vector<uint32_t> mmCommon; //common minimizers within the above two
+    std::set<uint32_t> visited_vertices;
 
-    tipVertexIds.push_back(i);
-    uint32_t chainLen = 1; //in term of edge counts
-    uint32_t currentVertex = i;
-    bool validTip = false;
-
-    for (uint32_t j = 0; j < param.maxTipLen; j++)
+    for (uint32_t i = 0; i < g.edges.size(); i++)
     {
-      uint32_t next = g.edges [g.offsets[currentVertex]].dst;
-      if (g.deletedReads[next >> 1] == false && g.getDegree (next ^ 1) == 1 && g.getDegree (next) == 1) {
-        tipVertexIds.push_back (next);
-        currentVertex = next;
-      }
-      else {
-        validTip = true; //tip is short enough for pruning
-      }
-    }
+      if (g.edges[i].del == true) continue;
+      uint32_t src = g.edges[i].src;
+      uint32_t dst = g.edges[i].dst;
+      uint32_t src_read = g.edges[i].src >> 1;
+      uint32_t dst_read = g.edges[i].dst >> 1;
+      assert (g.deletedReads[src_read] == false && g.deletedReads[dst_read] == false);
 
-    if (validTip) {
-      for (uint32_t &i : tipVertexIds) {
-        if (!param.logFileName.empty()) log << g.umap_inverse[i >> 1] << "\ttipCleaning()\n";
-        g.deletedReads[i >> 1] = true;
+      if (g.contained[dst_read] == false) continue;
+      if (g.getDegree(src) == 1) continue;
+
+      mmWalkContainedRead.clear();
+      mmWalkNonContainedReads.clear();
+      mmCommon.clear();
+
+      //uint32_t depth_bases = std::min<uint32_t>(param.depthReadLen * g.readseq[dst_read].length(), param.depthBaseCount);
+      uint32_t depth_bases = g.readseq[dst_read].length() - g.edges[i].ov_dst;
+
+      //collect minimizers via contained read
+      {
+        visited_vertices.clear();
+        uint32_t overlap_len = g.edges[i].ov_dst;
+        uint32_t beg = g.edges[i].ov_dst; //overlap length
+        uint32_t end = std::min<uint32_t> (g.readseq[dst_read].length(), beg + depth_bases);
+        uint32_t bases_processed = dfs_procedure (g, dst, beg, end, depth_bases, visited_vertices, mmWalkContainedRead, param);
+      }
+
+      //collect minimizers via other neighbors
+      {
+        visited_vertices.clear();
+        for (uint32_t j = g.offsets[src]; j < g.offsets[src+1]; j++) {
+          if (g.edges[j].del == true || j == i) continue;
+          uint32_t adjVertexId = g.edges[j].dst;
+          uint32_t adjReadId = adjVertexId >> 1;
+          uint32_t beg = g.edges[j].ov_dst; //overlap length
+          uint32_t end = std::min<uint32_t> (g.readseq[adjReadId].length(), beg + depth_bases);
+          uint32_t bases_processed = dfs_procedure (g, adjVertexId, beg, end, depth_bases, visited_vertices, mmWalkNonContainedReads, param);
+        }
+      }
+
+      //keep unique minimizers only before comparing
+      //rationale: there may be duplicate minimizers collected from redundant neighboring reads
+      std::sort (mmWalkNonContainedReads.begin(), mmWalkNonContainedReads.end());
+      auto last = std::unique (mmWalkNonContainedReads.begin(), mmWalkNonContainedReads.end());
+      mmWalkNonContainedReads.erase (last, mmWalkNonContainedReads.end());
+
+      std::sort (mmWalkContainedRead.begin(), mmWalkContainedRead.end());
+      last = std::unique (mmWalkContainedRead.begin(), mmWalkContainedRead.end());
+      mmWalkContainedRead.erase (last, mmWalkContainedRead.end());
+
+      //common minimizers
+      std::set_intersection(mmWalkNonContainedReads.begin(), mmWalkNonContainedReads.end(),
+          mmWalkContainedRead.begin(), mmWalkContainedRead.end(),
+          std::back_inserter(mmCommon));
+
+      if (mmWalkContainedRead.size() > 0 && 1.0 * mmCommon.size() /mmWalkContainedRead.size() >= param.cutoff)
+      {
+        {
+          n_reduced++;
+        }
+        g.edges[i].del = true;
       }
     }
   }
 
-  std::cerr << "INFO, tipCleaning() finished\n";
+  std::cerr << "INFO, identifyRedundantEdges() finished, " << n_reduced << " edges marked for deletion\n";
+  g.ensureSymmetry();
 }
 
-/**
- * @param[in]   removeContainedReads      option to simply mark all contained reads as redundant
- */
-void ovlgraph_simplify (bool removeContainedReads, graphcontainer &g, const algoParams &param)
+void ovlgraph_simplify (graphcontainer &g, const algoParams &param)
 {
   std::ofstream logFile (param.logFileName);
+  graphCleanup (g, param, logFile);
 
-  if (removeContainedReads) g.removeContainedReads (param, logFile);
-
-  g.index(); //indexing is needed prior to transitive reduction
-  g.transitiveReduction (param.fuzz, logFile);
-  g.index(); //re-index
-
-  //check redundancy of contained reads
-  g.removeContainedReadsAboveDegree (param, logFile);
-  g.index();
-  g.printGraphStats();
   uint32_t iter = 0;
 
   while (iter < param.iter)
   {
-    if (param.maxTipLen > 0) {
-      tipCleaning (g, param, logFile);
-      g.index(); //re-index
-      g.printGraphStats();
-    }
-
     if (param.runHui2016)
       identifyRedundantReadsHuiEtAl (g, param, logFile); //implemented for benchmarking
     else
-      identifyRedundantReads (g, param, logFile); //our algorithm
+    {
+      std::vector<bool> redundant = g.deletedReads;
+      identifyRedundantReads (g, redundant, param, logFile); //our algorithm
+      g.deletedReads = redundant;
+    }
     g.index(); //re-index
     g.printGraphStats();
 

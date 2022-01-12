@@ -11,30 +11,28 @@
 int main(int argc, char *argv[])
 {
   ketopt_t o = KETOPT_INIT;
-  float min_ovlp_identity = 100.0; //[0-100]
-  int min_ovlp_len = 5000;
   int c;
-  bool printReadStrings = false;
-  bool removeAllContainedReads = false;
   algoParams param;
 
   //initialize default values of various parameters
   param.initParams();
 
-  while ((c = ketopt(&o, argc, argv, 1, "cC:d:D:f:hHi:I:l:L:m:n:s:t:T:w:W:", 0)) >= 0)
+  while ((c = ketopt(&o, argc, argv, 1, "cC:d:D:f:hHi:I:l:L:m:M:n:r:s:t:T:w:W:", 0)) >= 0)
   {
-    if (c == 'c') removeAllContainedReads = true;
+    if (c == 'c') param.removeAllContainedReads = true;
     else if (c == 'C') param.maxContainmentDegree = atoi(o.arg);
     else if (c == 'd') param.gfadumpfilename = o.arg;
-    else if (c == 'D') param.gfadumpfilename = o.arg, printReadStrings = true;
+    else if (c == 'D') param.gfadumpfilename = o.arg, param.printReadStrings = true;
     else if (c == 'f') param.fuzz = atoi(o.arg);
     else if (c == 'H') param.hpc = true;
-    else if (c == 'i') min_ovlp_identity = atof(o.arg);
+    else if (c == 'i') param.min_ovlp_identity = atof(o.arg);
     else if (c == 'I') param.iter = atoi(o.arg);
-    else if (c == 'l') min_ovlp_len = atoi(o.arg);
+    else if (c == 'l') param.min_ovlp_len = atoi(o.arg);
     else if (c == 'm') param.cutoff = atof(o.arg);
+    else if (c == 'M') param.minContainedReadLength = atoi(o.arg);
     else if (c == 'n') param.dumpNonRedudantContainedReads = o.arg;
     else if (c == 'L') param.logFileName = o.arg;
+    else if (c == 'r') param.min_ovlp_ratio = atof(o.arg);
     else if (c == 's') param.d = atof(o.arg);
     else if (c == 't') param.threads = atoi(o.arg);
     else if (c == 'T') param.maxTipLen = atoi(o.arg);
@@ -47,8 +45,9 @@ int main(int argc, char *argv[])
   if (argc <= o.ind + 1) {
     std::cerr << "Usage: containX [options] <input-reads.fq> <in.paf>\n";
     std::cerr << "Options:\n";
-    std::cerr << "  -l NUM      min overlap length, default " << min_ovlp_len << "\n";
-    std::cerr << "  -i NUM      min overlap percentage identity [0.0-100.0], default " << min_ovlp_identity << "\n";
+    std::cerr << "  -l NUM      min overlap length, default " << param.min_ovlp_len << "\n";
+    std::cerr << "  -i NUM      min overlap percentage identity [0.0-100.0], default " << param.min_ovlp_identity << "\n";
+    std::cerr << "  -r NUM      min overlap length ratio [0.0-1.0], default " << param.min_ovlp_ratio << "\n";
     std::cerr << "  -t NUM      thread count, default " << param.threads << "\n";
     std::cerr << "  -I NUM      count of iterations, default " << param.iter << "\n";
     std::cerr << "  -s NUM      sample k-mer with NUM probability, default " << param.d << "\n";
@@ -58,6 +57,7 @@ int main(int argc, char *argv[])
     std::cerr << "  -H          use homopolymer-compressed k-mer\n";
     std::cerr << "  -c          simply mark all contained reads as redundant\n";
     std::cerr << "  -C NUM      mark reads contained in >NUM reads as redundant, default " << param.maxContainmentDegree << "\n";
+    std::cerr << "  -M NUM      mark contained reads below NUM length as redundant, default " << param.minContainedReadLength << "\n";
     std::cerr << "  -f NUM      fuzz value during transitive reduction, default " << param.fuzz << " (-1 disables reduction)\n";
     std::cerr << "  -T NUM      threshold for tip length removal, default " << param.maxTipLen << ", set 0 to disable\n";
     std::cerr << "  -n FILE     dump read ids of non-redundant contained reads\n";
@@ -67,8 +67,8 @@ int main(int argc, char *argv[])
     return 1;
   }
 
-  assert (min_ovlp_identity >= 0.0);
-  assert (min_ovlp_identity <= 100.0);
+  assert (param.min_ovlp_identity >= 0.0);
+  assert (param.min_ovlp_identity <= 100.0);
   assert (param.cutoff >= 0.0 && param.cutoff <= 1.0);
   assert (param.d > 0.0 && param.d <= 1.0);
   assert (param.depthReadLen > 0);
@@ -82,7 +82,8 @@ int main(int argc, char *argv[])
   std::cerr << "INFO, main(), started timer\n";
 
   graphcontainer g;
-  ovlgraph_gen (argv[o.ind], argv[o.ind+1], min_ovlp_identity, min_ovlp_len, g);
+  ovlgraph_gen (argv[o.ind], argv[o.ind+1], param, g);
+
 
   std::chrono::duration<double> wctduration = (std::chrono::system_clock::now() - tStart);
   std::cerr << "INFO, main(), graph generation completed after " << wctduration.count() << " seconds\n";
@@ -93,7 +94,7 @@ int main(int argc, char *argv[])
   printEdgesDOTFormat (g, "edges.beforeSimplify.DOT");
 #endif
 
-  ovlgraph_simplify (removeAllContainedReads, g, param);
+  ovlgraph_simplify (g, param);
 
   wctduration = (std::chrono::system_clock::now() - tStart);
   std::cerr << "INFO, main(), graph simplification completed after " << wctduration.count() << " seconds\n";
@@ -106,7 +107,7 @@ int main(int argc, char *argv[])
   printDegreeDistributionOnlyContainedVertices(g, "printDegreeDistributionOnlyContainedVertices.txt");
 #endif
 
-  g.outputGFA (param.gfadumpfilename, printReadStrings);
+  g.outputGFA (param.gfadumpfilename, param.printReadStrings);
   g.outputNonRedudantContainedReads (param.dumpNonRedudantContainedReads);
 
   //log complete command given by user
