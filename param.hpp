@@ -34,13 +34,13 @@ struct algoParams
     min_ovlp_identity = 100.0;
     min_ovlp_len = 5000;
     min_ovlp_ratio = 0.0; //disabled
-    minContainedReadLength = 10000;
+    minContainedReadLength = 0; //disabled
     maxContainmentDegree = UINT32_MAX; //disabled
     hpc = false;
     fuzz = 0;     //for transitive reduction
     iter = 1;     //iterations
     cutoff = 1.0; //[0-1]
-    maxTipLen = 0;
+    maxTipLen = 0; //0 removes unconnected vertices only
     depthReadLen = 2;
     depthBaseCount = UINT32_MAX; //unused by default
     threads = 1;
