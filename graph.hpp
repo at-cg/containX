@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <tuple>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 #include <fstream>
 #include "paf.hpp"
@@ -390,6 +391,18 @@ class graphcontainer
 //note: substring overlaps which are not suffix-prefix are ignored, may need to relax this later
 void ovlgraph_gen(const char *readfilename, const char *paffilename, const algoParams &param, graphcontainer &g)
 {
+  //check if het contained read list is given by user
+  std::unordered_set<std::string> readsToIgnore;
+  if (!param.hetContainedReads.empty())
+  {
+    std::string str;
+    std::ifstream fs(param.hetContainedReads);
+    while(getline(fs,str))
+      readsToIgnore.insert(str);
+
+    std::cerr << "INFO, ovlgraph_gen(), parsed " << readsToIgnore.size() << " reads to ignore from input file " << param.hetContainedReads << "\n";
+  }
+
   //read input paf file
   paf_rec_t r;
   paf_file_t *fp = paf_open(paffilename);
@@ -410,6 +423,10 @@ void ovlgraph_gen(const char *readfilename, const char *paffilename, const algoP
         validPaf++;
         std::string qname = r.qn;
         std::string tname = r.tn;
+
+        if (readsToIgnore.find (qname) != readsToIgnore.end()) continue;
+        if (readsToIgnore.find (tname) != readsToIgnore.end()) continue;
+
         uint32_t q_readId = g.addStringToMap(qname);
         uint32_t t_readId = g.addStringToMap(tname);
 
@@ -426,7 +443,7 @@ void ovlgraph_gen(const char *readfilename, const char *paffilename, const algoP
           g.containments.emplace_back(c);
           containedPaf++;
         }
-        if (r.te - r.ts == r.tl) //target is contained in qry
+        else if (r.te - r.ts == r.tl) //target is contained in qry
         {
           containmentTuple c;
           c.src = t_readId;
@@ -815,7 +832,7 @@ void tipCleaning (graphcontainer &g, const algoParams &param, std::ofstream& log
     if (g.getDegree (i ^ 1) != 0) continue;           //not a tip if there are incoming edges
     if (g.getDegree (i) > 1) continue;                //multiple out-edges
     if (g.getDegree (i) == 0)  {                      //singleton vertex without in and out neighbor
-      if (!param.logFileName.empty()) log << g.umap_inverse[i >> 1] << "\ttipCleaning()\n";
+      if (!param.logFileName.empty()) log << g.umap_inverse[i >> 1] << "\ttipCleaning(singleton)\n";
       g.deletedReads[i >> 1] = true;
       continue;
     }
@@ -839,7 +856,7 @@ void tipCleaning (graphcontainer &g, const algoParams &param, std::ofstream& log
 
     if (validTip) {
       for (uint32_t &i : tipVertexIds) {
-        if (!param.logFileName.empty()) log << g.umap_inverse[i >> 1] << "\ttipCleaning()\n";
+        if (!param.logFileName.empty()) log << g.umap_inverse[i >> 1] << "\ttipCleaning(chain)\n";
         g.deletedReads[i >> 1] = true;
       }
     }
@@ -873,11 +890,9 @@ void graphCleanup(graphcontainer &g, const algoParams &param, std::ofstream& log
   g.index(); //re-index
   g.printGraphStats();
 
-  if (param.maxTipLen > 0) {
-    tipCleaning (g, param, log);
-    g.index(); //re-index
-    g.printGraphStats();
-  }
+  tipCleaning (g, param, log);
+  g.index(); //re-index
+  g.printGraphStats();
 }
 
 #endif

@@ -376,11 +376,9 @@ void ovlgraph_simplify (graphcontainer &g, const algoParams &param)
     g.index(); //re-index
     g.printGraphStats();
 
-    if (param.maxTipLen > 0) {
-      tipCleaning (g, param, logFile);
-      g.index(); //re-index
-      g.printGraphStats();
-    }
+    tipCleaning (g, param, logFile);
+    g.index(); //re-index
+    g.printGraphStats();
 
     iter++;
   }

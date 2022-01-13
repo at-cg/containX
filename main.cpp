@@ -17,7 +17,7 @@ int main(int argc, char *argv[])
   //initialize default values of various parameters
   param.initParams();
 
-  while ((c = ketopt(&o, argc, argv, 1, "cC:d:D:f:hHi:I:l:L:m:M:n:r:s:t:T:w:W:", 0)) >= 0)
+  while ((c = ketopt(&o, argc, argv, 1, "cC:d:D:f:hHi:I:l:L:m:M:n:p:r:s:t:T:w:W:", 0)) >= 0)
   {
     if (c == 'c') param.removeAllContainedReads = true;
     else if (c == 'C') param.maxContainmentDegree = atoi(o.arg);
@@ -31,6 +31,7 @@ int main(int argc, char *argv[])
     else if (c == 'm') param.cutoff = atof(o.arg);
     else if (c == 'M') param.minContainedReadLength = atoi(o.arg);
     else if (c == 'n') param.dumpNonRedudantContainedReads = o.arg;
+    else if (c == 'p') param.hetContainedReads = o.arg;
     else if (c == 'L') param.logFileName = o.arg;
     else if (c == 'r') param.min_ovlp_ratio = atof(o.arg);
     else if (c == 's') param.d = atof(o.arg);
@@ -60,6 +61,7 @@ int main(int argc, char *argv[])
     std::cerr << "  -M NUM      mark contained reads below NUM length as redundant, default " << param.minContainedReadLength << "\n";
     std::cerr << "  -f NUM      fuzz value during transitive reduction, default " << param.fuzz << " (-1 disables reduction)\n";
     std::cerr << "  -T NUM      threshold for tip length removal, default " << param.maxTipLen << ", set 0 to disable\n";
+    std::cerr << "  -p FILE     list of read ids to ignore\n";
     std::cerr << "  -n FILE     dump read ids of non-redundant contained reads\n";
     std::cerr << "  -L FILE     dump algorithm log\n";
     std::cerr << "  -d FILE     dump graph in gfa format without sequences\n";

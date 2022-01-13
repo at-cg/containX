@@ -27,6 +27,7 @@ struct algoParams
   std::string gfadumpfilename;
   std::string dumpNonRedudantContainedReads;
   std::string logFileName;
+  std::string hetContainedReads;
 
   void initParams ()
   {
@@ -37,9 +38,9 @@ struct algoParams
     maxContainmentDegree = UINT32_MAX; //disabled
     hpc = false;
     fuzz = 0;     //for transitive reduction
-    iter = 2;     //iterations
+    iter = 1;     //iterations
     cutoff = 1.0; //[0-1]
-    maxTipLen = 3;
+    maxTipLen = 0;
     depthReadLen = 2;
     depthBaseCount = UINT32_MAX; //unused by default
     threads = 1;
