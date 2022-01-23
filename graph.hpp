@@ -307,6 +307,7 @@ class graphcontainer
      */
     void outputNonRedudantContainedReads (const std::string &filename)
     {
+      if (filename.empty()) return;
       std::ofstream outstrm (filename);
 
       for (auto &e : umap)
@@ -319,6 +320,23 @@ class graphcontainer
       }
     }
 
+    /**
+     * print read ids which are contained but not redundant
+     */
+    void outputNonRedudantReads (const std::string &filename)
+    {
+      if (filename.empty()) return;
+      std::ofstream outstrm (filename);
+
+      for (auto &e : umap)
+      {
+        uint32_t i = e.second; //read id
+        //print original read id
+        if (deletedReads[i] == false) {
+            outstrm  << e.first << "\n";
+        }
+      }
+    }
 
     //remove u->v if v'->u' is already removed
     void ensureSymmetry ()
@@ -694,63 +712,6 @@ void removeAllContainedReads(graphcontainer &g, const algoParams &param, std::of
   std::cerr << "INFO, removeAllContainedReads() finished\n";
 }
 
-//consider contained reads as redundant if their
-//'containment degree' is > maxDegree
-//or their length is below user-specified cutoff
-void removeSomeContainedReads(graphcontainer &g, const algoParams &param, std::ofstream &log)
-{
-  for (uint32_t i = 0; i < g.readCount; i++) {
-    if (g.deletedReads[i] == true || g.contained[i] == false) continue;
-
-    bool cond1 = g.getContaintmentDegree (i) > param.maxContainmentDegree;
-    bool cond2 = g.readseq[i].length() < param.minContainedReadLength;
-    if (cond1 || cond2) {
-      g.deletedReads[i] = true;
-      if (!param.logFileName.empty()) log << g.umap_inverse[i] << "\tremoveSomeContainedReads()\n";
-    }
-  }
-
-  std::vector<graphArc> edges_new;
-
-  for (auto &e : g.edges)
-  {
-    //check if both end vertices of the edge are available
-    if (g.deletedReads[e.src >> 1] == false && g.deletedReads[e.dst >> 1] == false)
-      edges_new.emplace_back(e);
-  }
-
-  g.edges = edges_new;
-  std::cerr << "INFO, removeSomeContainedReads() finished\n";
-}
-
-//remove short overlaps for a read
-//overlap must be short for both src and destination verticesfor removal
-void removeShortOverlaps(graphcontainer &g, const algoParams &param, std::ofstream &log)
-{
-  uint32_t n_reduced = 0;
-
-  for (uint32_t i = 0; i < g.edges.size(); i++)
-  {
-    uint32_t src = g.edges[i].src;
-    uint32_t dst = g.edges[i].dst;
-    uint32_t dst_rev = dst ^ 1;
-
-    uint32_t maxOvlsrc = 0;
-    for (uint32_t j = g.offsets[src]; j < g.offsets[src+1]; j++)
-      maxOvlsrc = std::max (g.edges[j].ov_src, maxOvlsrc);
-
-    uint32_t maxOvldstr = 0;
-    for (uint32_t j = g.offsets[dst_rev]; j < g.offsets[dst_rev+1]; j++)
-      maxOvldstr = std::max (g.edges[j].ov_src, maxOvldstr);
-
-    if (g.edges[i].ov_src < maxOvlsrc * param.min_ovlp_ratio && g.edges[i].ov_src < maxOvldstr * param.min_ovlp_ratio)
-      g.edges[i].del = true, n_reduced++;
-  }
-
-  std::cerr << "INFO, removeShortOverlaps(), " << n_reduced << " edges marked for deletion\n";
-  assert(g.checkSymmetry());
-}
-
 //algorithm motivated from Myers 2005
 //assumes indexing is done and edges are sorted
 //revised to handle multi-graphs
@@ -875,14 +836,8 @@ void tipCleaning (graphcontainer &g, const algoParams &param, std::ofstream& log
  */
 void graphCleanup(graphcontainer &g, const algoParams &param, std::ofstream& log)
 {
-  g.printGraphStats();
-
   if (param.removeAllContainedReads) removeAllContainedReads (g, param, log);
-  else removeSomeContainedReads(g, param, log);
-  g.index();
-  g.printGraphStats();
 
-  removeShortOverlaps(g, param, log);
   g.index();
   g.printGraphStats();
 

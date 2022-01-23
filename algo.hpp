@@ -155,7 +155,7 @@ void identifyRedundantReads(const graphcontainer &g, std::vector<bool> &redundan
       if (g.contained[i] == true && g.deletedReads[i] == false)
       {
         //user-specified depth during DFS in terms of count of bases
-        uint32_t depth_bases = std::min<uint32_t>(param.depthReadLen * g.readseq[i].length(), param.depthBaseCount);
+        uint32_t depth_bases = param.depthReadLen * g.readseq[i].length();
 
         //collect minimizers by starting DFS from contained read
         {
@@ -280,9 +280,6 @@ void ovlgraph_simplify (graphcontainer &g, const algoParams &param)
   std::ofstream logFile (param.logFileName);
   graphCleanup (g, param, logFile);
 
-  uint32_t iter = 0;
-
-  while (iter < param.iter)
   {
     if (param.runHui2016)
       identifyRedundantReadsHuiEtAl (g, param, logFile); //implemented for benchmarking
@@ -298,8 +295,6 @@ void ovlgraph_simplify (graphcontainer &g, const algoParams &param)
     tipCleaning (g, param, logFile);
     g.index(); //re-index
     g.printGraphStats();
-
-    iter++;
   }
 
   std::cerr << "INFO, ovlgraph_simplify() finished, printing final stats\n";
