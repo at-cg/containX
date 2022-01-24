@@ -280,6 +280,8 @@ void ovlgraph_simplify (graphcontainer &g, const algoParams &param)
   std::ofstream logFile (param.logFileName);
   graphCleanup (g, param, logFile);
 
+  uint32_t iter = 0;
+  while (iter < param.iter)
   {
     if (param.runHui2016)
       identifyRedundantReadsHuiEtAl (g, param, logFile); //implemented for benchmarking
@@ -295,6 +297,7 @@ void ovlgraph_simplify (graphcontainer &g, const algoParams &param)
     tipCleaning (g, param, logFile);
     g.index(); //re-index
     g.printGraphStats();
+    iter++;
   }
 
   std::cerr << "INFO, ovlgraph_simplify() finished, printing final stats\n";

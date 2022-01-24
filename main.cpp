@@ -17,7 +17,7 @@ int main(int argc, char *argv[])
   //initialize default values of various parameters
   param.initParams();
 
-  while ((c = ketopt(&o, argc, argv, 1, "cd:D:f:hHi:l:L:m:n:N:p:s:t:T:w:", 0)) >= 0)
+  while ((c = ketopt(&o, argc, argv, 1, "cd:D:f:hHi:I:l:L:m:n:N:p:s:t:T:w:", 0)) >= 0)
   {
     if (c == 'c') param.removeAllContainedReads = true;
     else if (c == 'd') param.gfadumpfilename = o.arg;
@@ -26,6 +26,7 @@ int main(int argc, char *argv[])
     else if (c == 'h') param.runHui2016 = true;
     else if (c == 'H') param.hpc = true;
     else if (c == 'i') param.min_ovlp_identity = atof(o.arg);
+    else if (c == 'I') param.iter = atoi(o.arg);
     else if (c == 'l') param.min_ovlp_len = atoi(o.arg);
     else if (c == 'L') param.logFileName = o.arg;
     else if (c == 'm') param.cutoff = atof(o.arg);
@@ -45,6 +46,7 @@ int main(int argc, char *argv[])
     std::cerr << "  -l NUM      min overlap length, default " << param.min_ovlp_len << "\n";
     std::cerr << "  -i NUM      min overlap percentage identity [0.0-100.0], default " << param.min_ovlp_identity << "\n";
     std::cerr << "  -t NUM      thread count, default " << param.threads << "\n";
+    std::cerr << "  -I NUM      count of iterations, default " << param.iter << "\n";
     std::cerr << "  -s NUM      sample k-mer with NUM probability, default " << param.d << "\n";
     std::cerr << "  -m NUM      min fraction of minimizer matches for redundant contained reads, default " << param.cutoff << "\n";
     std::cerr << "  -w NUM      walk length cutoff as a factor of read length, default " << param.depthReadLen << "\n";

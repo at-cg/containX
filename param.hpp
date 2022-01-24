@@ -8,6 +8,7 @@ struct algoParams
   uint32_t depthReadLen;          //how far to traverse while collecting minimizers, factor of read length
   uint32_t k;                     //k-mer length (<=16)
   int fuzz;                       //fuzz parameter for transitive reduction (Myers 2005)
+  uint32_t iter;                  //count of algo iterations for benchmarking
   uint32_t maxTipLen;             //threshold for tip length (set 0 to remove unconnected vertices only)
   uint32_t threads;               //thread count
   float d;                        //[0,1] sampling density
@@ -30,6 +31,7 @@ struct algoParams
     min_ovlp_len = 5000;
     hpc = false;
     fuzz = 0;     //for transitive reduction
+    iter = 1;     //iterations
     cutoff = 1.0; //[0-1]
     maxTipLen = 0; //0 removes unconnected vertices only
     depthReadLen = 2;
@@ -52,6 +54,7 @@ struct algoParams
     std::cerr << "INFO, printParams(), tip length cutoff = " << maxTipLen << "\n";
     std::cerr << "INFO, printParams(), d (density) = " << d << "\n";
     std::cerr << "INFO, printParams(), minimum fraction of minimizer match [0-1] = " << cutoff << "\n";
+    std::cerr << "INFO, printParams(), iter = " << iter << "\n";
     std::cerr << "INFO, printParams(), homopolymer compression = " << std::boolalpha << hpc << "\n";
     if (runHui2016) std::cerr << "INFO, printParams(), runHui2016 = " << std::boolalpha << runHui2016 << "\n";
   }
