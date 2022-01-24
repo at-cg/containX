@@ -57,6 +57,7 @@ struct algoParams
     std::cerr << "INFO, printParams(), iter = " << iter << "\n";
     std::cerr << "INFO, printParams(), homopolymer compression = " << std::boolalpha << hpc << "\n";
     if (runHui2016) std::cerr << "INFO, printParams(), runHui2016 = " << std::boolalpha << runHui2016 << "\n";
+    if (removeAllContainedReads) std::cerr << "INFO, printParams(), removeAllContainedReads = " << std::boolalpha << removeAllContainedReads << "\n";
   }
 };
 
