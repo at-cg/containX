@@ -5,6 +5,7 @@ Options:
   -l NUM      min overlap length, default 5000
   -i NUM      min overlap percentage identity [0.0-100.0], default 100
   -t NUM      thread count, default 1
+  -I NUM      count of iterations, default 1
   -s NUM      sample k-mer with NUM probability, default 0.25
   -m NUM      min fraction of minimizer matches for redundant contained reads, default 1
   -w NUM      walk length cutoff as a factor of read length, default 2

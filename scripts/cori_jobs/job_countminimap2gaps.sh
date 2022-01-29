@@ -14,7 +14,7 @@ HAP1=/global/homes/c/cjain7/shared/projects/assembly/chirag/data/genomes/HG002.h
 HAP2=/global/homes/c/cjain7/shared/projects/assembly/chirag/data/genomes/HG002.hifiasm.trio.0.16.1.hap2.fa
 GENOMESIZE=/global/homes/c/cjain7/shared/projects/assembly/chirag/data/genomes/HG002.hifiasm.trio.0.16.1.size
 
-for MINIDENTITY in 100 99.9 99
+for MINIDENTITY in 100
 do
   echo "MINIDENTITY=" ${MINIDENTITY}
   cat ${OVERLAPS} | awk -v minidnty="$MINIDENTITY" '{if ($3 == 0 && $2 == $4 && $2 < $7 && $10*100.0/$11 >= minidnty) print $0}' | cut -f1 > tmp1
@@ -27,7 +27,9 @@ do
   $SEQTK subseq $READS non-contained.${MINIDENTITY}.txt > non-contained.fasta
   /usr/bin/time $EXE -t 32 -N 50 -cx map-ont $HAP1 non-contained.fasta > mm2.${MINIDENTITY}.paf
   /usr/bin/time $EXE -t 32 -N 50 -cx map-ont $HAP2 non-contained.fasta >> mm2.${MINIDENTITY}.paf
-  cat mm2.${MINIDENTITY}.paf | awk '{if ($3 == 0 && $2 == $4 && $2 == $10) print $6"\t"$8"\t"$9}' | sort -k 1,1 -k2,2n -k3,3nr >  mm2.exactmapped.${MINIDENTITY}.bed
+  cat mm2.${MINIDENTITY}.paf | awk '{if ($3 == 0 && $2 == $4 && $2 == $10) print $6"\t"$8"\t"$9}' > tmp3
+  cat mm2.${MINIDENTITY}.paf | awk '{if ($8 == 0 && $7 == $9 && $7 == $10) print $6"\t"$8"\t"$9}' >> tmp3
+  cat tmp3 | sort -k 1,1 -k2,2n -k3,3nr >  mm2.exactmapped.${MINIDENTITY}.bed
   bedtools genomecov -i mm2.exactmapped.${MINIDENTITY}.bed -g $GENOMESIZE -bga | awk '{if ($4==0) print $0}' > mm2.exactmapped.nocov.${MINIDENTITY}.bed
   bedtools subtract -A -a mm2.exactmapped.nocov.${MINIDENTITY}.bed -b ../reads.fasta.headers.nocov.bed > mm2.exactmapped.nocov.subtracted.${MINIDENTITY}.bed
   bedtools genomecov -i mm2.exactmapped.${MINIDENTITY}.bed -g $GENOMESIZE > mm2.exactmapped.cov.${MINIDENTITY}.hist
@@ -35,4 +37,4 @@ do
   bedtools subtract -A -a mm2.exactmapped.nocov.subtracted.${MINIDENTITY}.bed -b genome_25kbp_ends.bed > mm2.exactmapped.nocov.subtracted.noends.${MINIDENTITY}.bed
 done
 
-rm tmp1 tmp2 non-contained.fasta  
+rm tmp1 tmp2 tmp3 non-contained.fasta  
