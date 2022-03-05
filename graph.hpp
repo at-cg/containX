@@ -740,7 +740,6 @@ uint32_t transitiveReduction(graphcontainer &g, int fuzz, std::ofstream& log)
     for (uint32_t j = g.offsets[v]; j < g.offsets[v+1]; j++)
     {
       uint32_t w = g.edges[j].dst;
-      if (mark [j - g.offsets[v]] != 1) continue;
 
       //neighborhood of w
       for (uint32_t k = g.offsets[w]; k < g.offsets[w+1]; k++)
@@ -772,12 +771,6 @@ uint32_t transitiveReduction(graphcontainer &g, int fuzz, std::ofstream& log)
   }
 
   std::cerr << "INFO, transitiveReduction(), " << n_reduced << " edges marked for deletion\n";
-
-  /**
-   * Ideally transitive reduction algorithm should preserve symmetry, but
-   * it is not guaranteed if overlapper has <100% recall
-   */
-  g.ensureSymmetry ();
 
   return n_reduced;
 }
@@ -843,6 +836,7 @@ void graphCleanup(graphcontainer &g, const algoParams &param, std::ofstream& log
 
   transitiveReduction (g, param.fuzz, log);
   g.index(); //re-index
+  assert(g.checkSymmetry());
   g.printGraphStats();
 
   tipCleaning (g, param, log);
