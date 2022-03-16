@@ -54,7 +54,7 @@ int main(int argc, char *argv[])
     std::cerr << "  -c          simply mark all contained reads as redundant\n";
     std::cerr << "  -f NUM      fuzz value during transitive reduction, default " << param.fuzz << " (-1 disables reduction)\n";
     std::cerr << "  -T NUM      threshold for tip length removal, default " << param.maxTipLen << "\n";
-    std::cerr << "  -p FILE     list of read ids to ignore\n";
+    std::cerr << "  -p FILE     list of non-repetitive het read ids (from hifiasm)\n";
     std::cerr << "  -n FILE     dump read ids of non-redundant contained reads\n";
     std::cerr << "  -N FILE     dump read ids of non-redundant reads\n";
     std::cerr << "  -L FILE     dump algorithm log\n";

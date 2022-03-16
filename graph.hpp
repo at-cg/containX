@@ -713,60 +713,40 @@ void removeAllContainedReads(graphcontainer &g, const algoParams &param, std::of
 }
 
 //algorithm motivated from Myers 2005
-//assumes indexing is done and edges are sorted
+//assumes indexing is done
 //revised to handle multi-graphs
 uint32_t transitiveReduction(graphcontainer &g, int fuzz, std::ofstream& log)
 {
-  if (fuzz < 0) return 0U; //reduction is disabled by user
-
-  //mark 0 : default, 1 : in-play, 2 : reduced
-  std::vector<uint8_t> mark (g.maxDegree(), 0);
+  std::for_each(g.edges.begin(), g.edges.end(), [](graphArc &e){assert (e.del == false);});
+  if (fuzz < 0) return 0U; //stop if reduction is disabled by user
 
   //save length of edge from vertex being considered
   uint32_t n_reduced = 0;
 
-  for (uint32_t v = 0; v < g.vertexCount; v++)
+  for (auto &e : g.edges)
   {
+    uint32_t v = e.src;
     if (g.getDegree (v) == 0) continue;
 
     //neighborhood of v
     for (uint32_t j = g.offsets[v]; j < g.offsets[v+1]; j++) {
-      mark [j - g.offsets[v]] = 1; //edge in-play
-    }
 
-    uint32_t longest = g.edges[g.offsets[v+1] - 1].len + fuzz;
-
-    //neighborhood of v
-    for (uint32_t j = g.offsets[v]; j < g.offsets[v+1]; j++)
-    {
       uint32_t w = g.edges[j].dst;
 
       //neighborhood of w
-      for (uint32_t k = g.offsets[w]; k < g.offsets[w+1]; k++)
-      {
-        uint32_t x = g.edges[k].dst;
-        uint32_t sum = g.edges[j].len + g.edges[k].len; // v->w + w->x
-        if (sum > longest) break;
+      for (uint32_t k = g.offsets[w]; k < g.offsets[w+1]; k++) {
 
-        for (uint32_t l = g.offsets[v]; l < g.offsets[v+1]; l++)
-        {
-          if (g.edges[l].dst == x) { //v->x
-            if (mark [l - g.offsets[v]] == 1) { //in-play?
-              if (sum <= g.edges[l].len + fuzz && sum + fuzz >= g.edges[l].len) { //length check
-                mark [l - g.offsets[v]] = 2; //eliminate this edge
-              }
+        uint32_t sum = g.edges[j].len + g.edges[k].len;
+
+        if (g.edges[k].dst == e.dst) {
+          if (sum <= e.len + fuzz && sum + fuzz >= e.len ) { //avoid subtraction with unsigned types
+            if (e.del == false) {
+              e.del = true;
+              n_reduced++;
             }
           }
         }
       }
-    }
-
-    for (uint32_t j = g.offsets[v]; j < g.offsets[v+1]; j++)
-    {
-      if (mark[j - g.offsets[v]] == 2)
-        g.edges[j].del = true, n_reduced++;
-
-      mark[j - g.offsets[v]] = 0; //edge is not in-play anymore
     }
   }
 

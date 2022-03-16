@@ -1,22 +1,21 @@
-# containX
-```
-Usage: containX [options] <input-reads.fq> <in.paf>
-Options:
-  -l NUM      min overlap length, default 5000
-  -i NUM      min overlap percentage identity [0.0-100.0], default 100
-  -t NUM      thread count, default 1
-  -I NUM      count of iterations, default 1
-  -s NUM      sample k-mer with NUM probability, default 0.25
-  -m NUM      min fraction of minimizer matches for redundant contained reads, default 1
-  -w NUM      walk length cutoff as a factor of read length, default 2
-  -H          use homopolymer-compressed k-mer
-  -c          simply mark all contained reads as redundant
-  -f NUM      fuzz value during transitive reduction, default 0 (-1 disables reduction)
-  -T NUM      threshold for tip length removal, default 0
-  -p FILE     list of read ids to ignore
-  -n FILE     dump read ids of non-redundant contained reads
-  -N FILE     dump read ids of non-redundant reads
-  -L FILE     dump algorithm log
-  -d FILE     dump graph in gfa format without sequences
-  -D FILE     dump graph in gfa format with sequences
-```
+containX
+========================================================================
+
+containX is a prototype implementation of an algorithm that decides which contained reads can be dropped during overlap graph sparsfication. Reads which are substrings of longer reads are typically referred to as contained reads. The string graph model filters out contained reads during graph construction. Contained reads are mostly considered redundant in most assembly algorithms. However, removing all contained reads can lead to coverage gaps, especially in diploid, polyploid genomes and metagenomes. Here we have implemented novel heuristics to distinguish redundant and non-redundant contained reads. 
+
+## Install
+
+Clone source code from master branch. 
+  ```sh
+  git clone https://github.com/at-cg/containX.git
+  ```
+To compile, the software requires C++ compiler with c++11 and openmp, which are available by default in GCC >= 4.8.
+  ```sh
+	cd containX
+	make
+  ```
+Expect `containX` executable in your folder.
+
+## Usage on diploid genomes
+
+
