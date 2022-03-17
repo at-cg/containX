@@ -4,7 +4,7 @@ HAP1=data/genomes/HG002.hifiasm.trio.0.16.1.hap1.fa
 HAP2=data/genomes/HG002.hifiasm.trio.0.16.1.hap2.fa
 READS=human_diploid_30x_HG02080_HPRC_hifiasm.trio.0.16.1/reads.fasta
 READIDS=nonRedundantContainedReads.txt
-GAPS=map_mm2_noncontained/mm2.exactmapped.nocov.subtracted.noends.100.bed
+GAPS=map_mm2_noncontained/mm2.exactmapped.nocov.subtracted.noends.bed
 
 seqtk subseq $READS $READIDS > non-redundant.fasta
 minimap2 -t 32 -N 50 -cx map-ont $HAP1 non-redundant.fasta > mm2.paf
