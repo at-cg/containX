@@ -27,7 +27,7 @@ In the current algorithm, we assume that there are no sequencing errors (e.g., r
 minimap2 -t 32 -w 101 -k 27 -g 500 -B 8 -O 8,48 -E 4,2 -cx ava-ont reads.fastq reads.fastq > overlaps.paf
 hifiasm  --dbg-het-cnt -o hifiasmoutput -t 32 reads.fastq
 cat hifiasmoutput.het_cnt.log | tr -d ">" | awk '{if ($2 > 0) {print $1}}' > hifiasmoutput.readids.txt
-containX -p hifiasmoutput.readids.txt -n nonRedundantContainedReads.txt reads.fastq overlaps.paf
+containX -t 32 -p hifiasmoutput.readids.txt -n nonRedundantContainedReads.txt reads.fastq overlaps.paf
 ```
 
 ## Usage on haploid genomes
@@ -35,5 +35,5 @@ containX -p hifiasmoutput.readids.txt -n nonRedundantContainedReads.txt reads.fa
 The same steps as above, but the step using hifiasm can be skipped. Users are welcome to run containX on simple examples provided in [data](data) folder.
 ```sh
 minimap2 -t 32 -w 101 -k 27 -g 500 -B 8 -O 8,48 -E 4,2 -cx ava-ont reads.fastq reads.fastq > overlaps.paf
-containX -n nonRedundantContainedReads.txt reads.fastq overlaps.paf
+containX -t 32 -n nonRedundantContainedReads.txt reads.fastq overlaps.paf
 ```
