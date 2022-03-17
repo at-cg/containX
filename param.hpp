@@ -23,7 +23,7 @@ struct algoParams
   std::string dumpNonRedudantContainedReads;
   std::string dumpNonRedudantReads;
   std::string logFileName;
-  std::string hetContainedReads;
+  std::string hetReads;           //non-repetitive het reads prediced using hifiasm
 
   void initParams ()
   {

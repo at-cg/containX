@@ -1,11 +1,15 @@
 containX
 ========================================================================
 
-containX is a prototype implementation of an algorithm that decides which contained reads can be dropped during overlap graph sparsfication. Reads which are substrings of longer reads are typically referred to as contained reads. The string graph model filters out contained reads during graph construction. Contained reads are mostly considered redundant in most assembly algorithms. However, removing all contained reads can lead to coverage gaps, especially in diploid, polyploid genomes and metagenomes. Here we have implemented novel heuristics to distinguish redundant and non-redundant contained reads. 
+containX is a prototype implementation of an algorithm that decides which contained reads can be dropped during overlap graph sparsfication. Reads which are substrings of longer reads are typically referred to as contained reads. The [string graph model](https://doi.org/10.1093/bioinformatics/bti1114) filters out contained reads during graph construction. Contained reads are typically considered redundant by commonly-used long-read assemblers. However, removing all contained reads can lead to coverage gaps, especially in diploid, polyploid genomes and metagenomes (see example below). Here we have implemented novel heuristics to distinguish redundant and non-redundant contained reads.
+
+<p align="center">
+<img src="https://i.postimg.cc/fLbJvvMQ/readme-contain-X-gap.jpg" width=400px"> <br>
+</p>
 
 ## Install
 
-Clone source code from master branch. 
+Clone source code from master branch.
   ```sh
   git clone https://github.com/at-cg/containX.git
   ```
@@ -18,4 +22,18 @@ Expect `containX` executable in your folder.
 
 ## Usage on diploid genomes
 
+containX currently assumes that there are no sequencing errors (e.g., reads have been error-corrected). Future versions will permit a small error-rate. You will need a fastq file (say reads.fastq) to begin. Prior to using containX, use minimap2 (Li 2018) to compute read overlaps. Also use hifiasm read overlapper (Cheng et al. 2021) to identify reads that are sampled from a non-repetitive region of a genome and have a heterozygous SNP. Minimap2 can be obtained from [here](https://github.com/lh3/minimap2/releases). A modified version of hifiasm code can be obtained from [here](https://github.com/cjain7/hifiasm/tree/hifiasm_dev_debug). Note that the modified code is available on branch *hifiasm_dev_debug*. Use the following commands while adjusting the thread count. 
+```sh
+minimap2 -t 32 -w 101 -k 27 -g 500 -B 8 -O 8,48 -E 4,2 -cx ava-ont reads.fastq reads.fastq > overlaps.paf
+hifiasm  --dbg-het-cnt -o hifiasm -t 32 reads.fastq
+cat hifiasm.het_cnt.log | tr -d ">" | awk '{if ($2 > 0) {print $1}}' > hifiasm.readids.txt
+containX -p hifiasm.readids.txt -n nonRedundantContainedReads.txt reads.fastq overlaps.paf
+```
 
+## Usage on haploid genomes
+
+The same steps as above, but the step using hifiasm can be skipped. Users are welcome to run containX on simple examples provided in [data](data) folder.
+```sh
+minimap2 -t 32 -w 101 -k 27 -g 500 -B 8 -O 8,48 -E 4,2 -cx ava-ont reads.fastq reads.fastq > overlaps.paf
+containX -n nonRedundantContainedReads.txt reads.fastq overlaps.paf
+```

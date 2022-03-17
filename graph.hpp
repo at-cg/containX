@@ -409,16 +409,17 @@ class graphcontainer
 //note: substring overlaps which are not suffix-prefix are ignored, may need to relax this later
 void ovlgraph_gen(const char *readfilename, const char *paffilename, const algoParams &param, graphcontainer &g)
 {
-  //check if het contained read list is given by user
+  //check if het read list from hifiasm is given by user
+  std::unordered_set<std::string> readsToIgnoreIfContained;
   std::unordered_set<std::string> readsToIgnore;
-  if (!param.hetContainedReads.empty())
+  if (!param.hetReads.empty())
   {
     std::string str;
-    std::ifstream fs(param.hetContainedReads);
+    std::ifstream fs(param.hetReads);
     while(getline(fs,str))
-      readsToIgnore.insert(str);
+      readsToIgnoreIfContained.insert(str);
 
-    std::cerr << "INFO, ovlgraph_gen(), parsed " << readsToIgnore.size() << " reads to ignore from input file " << param.hetContainedReads << "\n";
+    std::cerr << "INFO, ovlgraph_gen(), parsed " << readsToIgnoreIfContained.size() << " non-repetitive heterozygous reads from input file " << param.hetReads << "\n";
   }
 
   //read input paf file
@@ -428,7 +429,26 @@ void ovlgraph_gen(const char *readfilename, const char *paffilename, const algoP
     std::cerr << "ERROR, ovlgraph_gen(), could not open PAF file\n";
     exit(1);
   }
+  while (paf_read(fp, &r) >= 0) {
+    std::string qname = r.qn;
+    std::string tname = r.tn;
+    if (r.ml * 100.0 / r.bl >= param.min_ovlp_identity) {
+      if (r.qe - r.qs == r.ql && r.ql < r.tl) { //qry is contained in target
+        if (readsToIgnoreIfContained.find (qname) != readsToIgnoreIfContained.end()) //ignore?
+          readsToIgnore.insert(qname);
+      }
+      if (r.te - r.ts == r.tl && r.tl < r.ql) { //target is contained in qry
+        if (readsToIgnoreIfContained.find (tname) != readsToIgnoreIfContained.end()) //ignore?
+          readsToIgnore.insert(tname);
+      }
+    }
+  }
+  std::cerr << "INFO, ovlgraph_gen(), identified " << readsToIgnore.size() << " reads to ignore\n";
+  paf_close(fp);
 
+
+  //read input paf file again
+  fp = paf_open(paffilename);
   std::cerr << "INFO, ovlgraph_gen(), reading paf records from " << paffilename << "\n";
 
   uint64_t totPaf = 0, validPaf = 0, suffPrefPaf = 0, containedPaf = 0;

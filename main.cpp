@@ -32,7 +32,7 @@ int main(int argc, char *argv[])
     else if (c == 'm') param.cutoff = atof(o.arg);
     else if (c == 'n') param.dumpNonRedudantContainedReads = o.arg;
     else if (c == 'N') param.dumpNonRedudantReads = o.arg;
-    else if (c == 'p') param.hetContainedReads = o.arg;
+    else if (c == 'p') param.hetReads = o.arg;
     else if (c == 's') param.d = atof(o.arg);
     else if (c == 't') param.threads = atoi(o.arg);
     else if (c == 'T') param.maxTipLen = atoi(o.arg);
