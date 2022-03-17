@@ -25,9 +25,9 @@ Expect `containX` executable in your folder.
 In the current algorithm, we assume that there are no sequencing errors (e.g., reads have been error-corrected). Future versions of code will permit a small error-rate. You will need a fastq file (say reads.fastq) to begin. Prior to using containX, use minimap2 [(Li 2018)](https://doi.org/10.1093/bioinformatics/bty191) to compute read overlaps. Also use hifiasm read overlapper [(Cheng et al. 2021)](https://doi.org/10.1038/s41592-020-01056-5) to identify reads that are sampled from a non-repetitive region of a genome and have a heterozygous SNP. Minimap2  can be downloaded from [here](https://github.com/lh3/minimap2/releases). A modified version of hifiasm code can be obtained from [here](https://github.com/cjain7/hifiasm/tree/hifiasm_dev_debug). Note that the modified code is available through branch *hifiasm_dev_debug*. Use the following commands to run the pipeline (may need to adjust thread count). 
 ```sh
 minimap2 -t 32 -w 101 -k 27 -g 500 -B 8 -O 8,48 -E 4,2 -cx ava-ont reads.fastq reads.fastq > overlaps.paf
-hifiasm  --dbg-het-cnt -o hifiasm -t 32 reads.fastq
-cat hifiasm.het_cnt.log | tr -d ">" | awk '{if ($2 > 0) {print $1}}' > hifiasm.readids.txt
-containX -p hifiasm.readids.txt -n nonRedundantContainedReads.txt reads.fastq overlaps.paf
+hifiasm  --dbg-het-cnt -o hifiasmoutput -t 32 reads.fastq
+cat hifiasmoutput.het_cnt.log | tr -d ">" | awk '{if ($2 > 0) {print $1}}' > hifiasmoutput.readids.txt
+containX -p hifiasmoutput.readids.txt -n nonRedundantContainedReads.txt reads.fastq overlaps.paf
 ```
 
 ## Usage on haploid genomes
