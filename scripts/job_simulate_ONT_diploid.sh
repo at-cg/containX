@@ -16,4 +16,4 @@ seqrequester simulate -truncate -genome $HAP2 -genomesize $SIZE_SUM -coverage $C
 
 grep ">" reads.fasta > reads.fasta.headers
 cat reads.fasta.headers | awk -F '[=,-]' '{print $9"\t"$5"\t"$6}' | sort -k 1,1 -k2,2n -k3,3nr > reads.fasta.headers.bed
-bedtools genomecov -i ${OUTPUTSEQ}.headers.bed -g $GENOMESIZE -bga | awk '{if ($4==0) print $0}' > reads.fasta.headers.nocov.bed
+bedtools genomecov -i reads.fasta.headers.bed -g $GENOMESIZE -bga | awk '{if ($4==0) print $0}' > reads.fasta.headers.nocov.bed
