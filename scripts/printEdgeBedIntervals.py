@@ -1,4 +1,4 @@
-#Usage : python <file> <genomesizefile> <L>
+#Usage : python printEdgeBedIntervals.py <genomesizefile> <L>
 #prints two bed intervals per chromosome, the first L bases and the end L bases
 
 import sys
