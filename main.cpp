@@ -17,12 +17,13 @@ int main(int argc, char *argv[])
   //initialize default values of various parameters
   param.initParams();
 
-  while ((c = ketopt(&o, argc, argv, 1, "cd:D:f:hHi:I:l:L:m:n:N:p:s:t:T:w:", 0)) >= 0)
+  while ((c = ketopt(&o, argc, argv, 1, "cd:D:f:g:hHi:I:l:L:m:n:N:p:s:t:T:w:", 0)) >= 0)
   {
     if (c == 'c') param.removeAllContainedReads = true;
     else if (c == 'd') param.gfadumpfilename = o.arg;
     else if (c == 'D') param.gfadumpfilename = o.arg, param.printReadStrings = true;
     else if (c == 'f') param.fuzz = atoi(o.arg);
+    else if (c == 'g') param.pacedumpfilename = o.arg;
     else if (c == 'h') param.runHui2016 = true;
     else if (c == 'H') param.hpc = true;
     else if (c == 'i') param.min_ovlp_identity = atof(o.arg);
@@ -54,12 +55,13 @@ int main(int argc, char *argv[])
     std::cerr << "  -c          simply mark all contained reads as redundant\n";
     std::cerr << "  -f NUM      fuzz value during transitive reduction, default " << param.fuzz << " (-1 disables reduction)\n";
     std::cerr << "  -T NUM      threshold for tip length removal, default " << param.maxTipLen << "\n";
-    std::cerr << "  -p FILE     list of non-repetitive het read ids (from hifiasm)\n";
+    std::cerr << "  -p FILE     list of non-repetitive heterozygous read ids (from hifiasm)\n";
     std::cerr << "  -n FILE     dump read ids of non-redundant contained reads\n";
     std::cerr << "  -N FILE     dump read ids of non-redundant reads\n";
     std::cerr << "  -L FILE     dump algorithm log\n";
     std::cerr << "  -d FILE     dump graph in gfa format without sequences\n";
     std::cerr << "  -D FILE     dump graph in gfa format with sequences\n";
+    std::cerr << "  -g FILE     dump undirected graph in PACE format\n";
     return 1;
   }
 
@@ -88,6 +90,7 @@ int main(int argc, char *argv[])
   std::cerr << "INFO, main(), graph simplification completed after " << wctduration.count() << " seconds\n";
 
   g.outputGFA (param.gfadumpfilename, param.printReadStrings);
+  g.exportPACE (param.pacedumpfilename);
   g.outputNonRedudantContainedReads (param.dumpNonRedudantContainedReads);
   g.outputNonRedudantReads (param.dumpNonRedudantReads);
 

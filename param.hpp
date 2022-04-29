@@ -20,10 +20,11 @@ struct algoParams
 
   //files for logging output or progress
   std::string gfadumpfilename;
+  std::string pacedumpfilename;
   std::string dumpNonRedudantContainedReads;
   std::string dumpNonRedudantReads;
   std::string logFileName;
-  std::string hetReads;           //non-repetitive het reads prediced using hifiasm
+  std::string hetReads;           //non-repetitive heterozygous reads predicted using hifiasm
 
   void initParams ()
   {

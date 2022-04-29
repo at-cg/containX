@@ -93,8 +93,8 @@ class graphcontainer
       }
     }
 
-    //parse + save all reads, and mark the contained ones
-    void initVectors(const char *readfilename)
+    //initialize basic vectors
+    void initVectors()
     {
       readCount = umap.size();
       vertexCount = 2 * readCount;
@@ -111,26 +111,28 @@ class graphcontainer
 
       for (auto &e : containments)
         contained[e.src] = true;
+    }
 
+    //parse + save all reads, and mark the contained ones
+    void initReadStrings(const char *readfilename)
+    {
       //parse reads
-      {
-        int l;
-        gzFile fp;
-        kseq_t *seq;
-        fp = gzopen(readfilename, "r"); //open the file handler
-        seq = kseq_init(fp);
-        while ((l = kseq_read(seq)) >= 0) {
-          std::string id = seq->name.s;
-          std::string readstr = seq->seq.s;
-          if (umap.find(id) != umap.end())
-          {
-            readseq[umap[id]] = readstr;
-          }
+      int l;
+      gzFile fp;
+      kseq_t *seq;
+      fp = gzopen(readfilename, "r"); //open the file handler
+      seq = kseq_init(fp);
+      while ((l = kseq_read(seq)) >= 0) {
+        std::string id = seq->name.s;
+        std::string readstr = seq->seq.s;
+        if (umap.find(id) != umap.end() && deletedReads[umap[id]] == false)
+        {
+          readseq[umap[id]] = readstr;
         }
-        kseq_destroy(seq);
-        gzclose(fp);
       }
-      std::cerr << "INFO, initVectors(), parsed reads from " << readfilename << "\n";
+      kseq_destroy(seq);
+      gzclose(fp);
+      std::cerr << "INFO, initReadStrings(), parsed reads from " << readfilename << "\n";
     }
 
     void printGraphStats ()
@@ -139,11 +141,6 @@ class graphcontainer
       std::cerr << "INFO, printGraphStats(), multiedges : " << std::boolalpha << checkMultiEdges() << ", symmetric : " << checkSymmetry() << "\n";
       std::cerr << "INFO, printGraphStats(), graph has " << vertexCount << " vertices from " << readCount << " reads in total\n";
       std::cerr << "INFO, printGraphStats(), " << std::count(contained.begin(), contained.end(), true) << " reads are marked as contained in graph\n";
-      uint32_t redundantcontainedReads = 0;
-      for (uint32_t i = 0; i < readCount; i++)
-        if (contained[i] == true && deletedReads[i] == true)
-          redundantcontainedReads++;
-      std::cerr << "INFO, printGraphStats(), " << redundantcontainedReads << " reads are marked as deleted and contained in graph\n";
 
       uint32_t junctionReads, i;
 
@@ -233,6 +230,11 @@ class graphcontainer
       }
 
       assert (it_b == containments.end());
+
+
+      contained.assign (readCount, false);
+      for (auto &e : containments)
+        contained[e.src] = true;
     }
 
     //count of out-edges from a graph vertex
@@ -300,6 +302,33 @@ class graphcontainer
             outstrm  << "x\tread" << i << "\t" << e.first << "\t" << readseq[i].length() << "\t" << getContaintmentDegree(i) << "\t" << getDegree (i << 1 | 0) << "\t" << getDegree (i << 1 | 1) << "\n";
         }
       }
+    }
+
+    //output in graph format similar to what is used by PACE competition
+    //https://github.com/PACE-challenge/Treewidth
+    //exported graph will be undirected, and will not contain self loops
+    //vertex ids in the exported graph are 1-based
+    void exportPACE (const std::string &filename) const
+    {
+      if (filename.empty()) return;
+      std::ofstream outstrm (filename);
+
+      std::vector<std::pair<uint32_t, uint32_t>> edgesToPrint;
+
+      for (uint32_t i = 0; i < edges.size(); i++) {
+        assert (edges[i].del == false);
+        if (edges[i].src < edges[i].dst)
+          edgesToPrint.emplace_back(edges[i].src + 1, edges[i].dst + 1);
+        else if (edges[i].src > edges[i].dst)
+          edgesToPrint.emplace_back(edges[i].dst + 1, edges[i].src + 1);
+      }
+
+      std::sort (edgesToPrint.begin(), edgesToPrint.end());
+      edgesToPrint.erase(std::unique(edgesToPrint.begin(), edgesToPrint.end()), edgesToPrint.end());
+
+      outstrm  << "p tw " << vertexCount << " " << edgesToPrint.size() << "\n";
+      for (auto &e: edgesToPrint)
+        outstrm  << e.first << " " << e.second << "\n";
     }
 
     /**
@@ -405,50 +434,68 @@ class graphcontainer
 
 };
 
+void processHetReads (const std::unordered_set<std::string> &hetReadsToIgnoreIfContained, graphcontainer &g)
+{
+  uint32_t n_del = 0;
+  for (const auto& readIdStr: hetReadsToIgnoreIfContained) {
+    if (g.umap.find(readIdStr) != g.umap.end()) {
+      uint32_t id = g.umap[readIdStr];
+      if (g.contained[id] == true) {
+        if (g.deletedReads[id] == false) {
+          n_del++;
+          g.deletedReads[id] = true;
+        }
+      }
+    }
+  }
+
+  std::cerr << "INFO, processHetReads(), " << n_del << " reads marked for deletion\n";
+}
+
+void processHomReads (const std::unordered_set<std::string> &homReadsToIgnoreIfContained, graphcontainer &g)
+{
+  uint32_t n_del = 0;
+  for (auto &e : g.containments)
+  {
+    if (g.deletedReads[e.src] == true) continue;
+    if (g.deletedReads[e.dst] == true) continue;
+
+    assert (g.umap_inverse.find(e.src) != g.umap_inverse.end());
+    assert (g.umap_inverse.find(e.dst) != g.umap_inverse.end());
+    auto containedReadIdStr = g.umap_inverse[e.src];
+    auto parentReadIdStr = g.umap_inverse[e.dst];
+
+    if (homReadsToIgnoreIfContained.find(containedReadIdStr) != homReadsToIgnoreIfContained.end() &&
+      homReadsToIgnoreIfContained.find(parentReadIdStr) != homReadsToIgnoreIfContained.end()) {
+      if (g.deletedReads[e.src] == false) {
+        n_del++;
+        g.deletedReads[e.src] = true;
+      }
+    }
+  }
+
+  std::cerr << "INFO, processHomReads(), " << n_del << " reads marked for deletion\n";
+}
+
 //note: we assume that overlapper skipped dual mappings, minimap2 overlapping module skips by default
 //note: substring overlaps which are not suffix-prefix are ignored, may need to relax this later
 void ovlgraph_gen(const char *readfilename, const char *paffilename, const algoParams &param, graphcontainer &g)
 {
   //check if het read list from hifiasm is given by user
-  std::unordered_set<std::string> readsToIgnoreIfContained;
-  std::unordered_set<std::string> readsToIgnore;
+  std::unordered_set<std::string> hetReadsToIgnoreIfContained;
   if (!param.hetReads.empty())
   {
     std::string str;
     std::ifstream fs(param.hetReads);
     while(getline(fs,str))
-      readsToIgnoreIfContained.insert(str);
+      hetReadsToIgnoreIfContained.insert(str);
 
-    std::cerr << "INFO, ovlgraph_gen(), parsed " << readsToIgnoreIfContained.size() << " non-repetitive heterozygous reads from input file " << param.hetReads << "\n";
+    std::cerr << "INFO, ovlgraph_gen(), parsed " << hetReadsToIgnoreIfContained.size() << " non-repetitive heterozygous reads from input file " << param.hetReads << "\n";
   }
 
   //read input paf file
   paf_rec_t r;
   paf_file_t *fp = paf_open(paffilename);
-  if (!fp) {
-    std::cerr << "ERROR, ovlgraph_gen(), could not open PAF file\n";
-    exit(1);
-  }
-  while (paf_read(fp, &r) >= 0) {
-    std::string qname = r.qn;
-    std::string tname = r.tn;
-    if (r.ml * 100.0 / r.bl >= param.min_ovlp_identity) {
-      if (r.qe - r.qs == r.ql && r.ql < r.tl) { //qry is contained in target
-        if (readsToIgnoreIfContained.find (qname) != readsToIgnoreIfContained.end()) //ignore?
-          readsToIgnore.insert(qname);
-      }
-      if (r.te - r.ts == r.tl && r.tl < r.ql) { //target is contained in qry
-        if (readsToIgnoreIfContained.find (tname) != readsToIgnoreIfContained.end()) //ignore?
-          readsToIgnore.insert(tname);
-      }
-    }
-  }
-  std::cerr << "INFO, ovlgraph_gen(), identified " << readsToIgnore.size() << " reads to ignore\n";
-  paf_close(fp);
-
-
-  //read input paf file again
-  fp = paf_open(paffilename);
   std::cerr << "INFO, ovlgraph_gen(), reading paf records from " << paffilename << "\n";
 
   uint64_t totPaf = 0, validPaf = 0, suffPrefPaf = 0, containedPaf = 0;
@@ -461,9 +508,6 @@ void ovlgraph_gen(const char *readfilename, const char *paffilename, const algoP
         validPaf++;
         std::string qname = r.qn;
         std::string tname = r.tn;
-
-        if (readsToIgnore.find (qname) != readsToIgnore.end()) continue;
-        if (readsToIgnore.find (tname) != readsToIgnore.end()) continue;
 
         uint32_t q_readId = g.addStringToMap(qname);
         uint32_t t_readId = g.addStringToMap(tname);
@@ -619,7 +663,9 @@ void ovlgraph_gen(const char *readfilename, const char *paffilename, const algoP
 
   std::for_each(g.edges.begin(), g.edges.end(), [](graphArc &e){e.del = false;});
   assert (g.edges.size() <= UINT32_MAX); //otherwise our implementation may not work
-  g.initVectors(readfilename);
+  g.initVectors();
+  processHetReads (hetReadsToIgnoreIfContained, g);
+  g.initReadStrings(readfilename);
   g.index();
   g.printGraphStats();
 

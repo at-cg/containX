@@ -146,7 +146,6 @@ void identifyRedundantReads(const graphcontainer &g, std::vector<bool> &redundan
 #pragma omp for schedule(static, 1)
     for (uint32_t i = 0; i < g.readCount; i++)
     {
-      assert (g.readseq[i].length() > 0);
       uint32_t available_parent_count = 0;
       mmWalkRead.clear();
       mmWalkParentReads.clear();
@@ -154,6 +153,8 @@ void identifyRedundantReads(const graphcontainer &g, std::vector<bool> &redundan
 
       if (g.contained[i] == true && g.deletedReads[i] == false)
       {
+        assert (g.readseq[i].length() > 0);
+
         //user-specified depth during DFS in terms of count of bases
         uint32_t depth_bases = param.depthReadLen * g.readseq[i].length();
 
