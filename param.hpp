@@ -5,6 +5,7 @@ struct algoParams
 {
   float min_ovlp_identity;        //minimum overlap identity
   uint32_t min_ovlp_len;          //minimum overlap length (absolute)
+  uint32_t min_read_len;          //minimum read length
   uint32_t depthReadLen;          //how far to traverse while collecting minimizers, factor of read length
   uint32_t k;                     //k-mer length (<=16)
   int fuzz;                       //fuzz parameter for transitive reduction (Myers 2005)
@@ -30,6 +31,7 @@ struct algoParams
   {
     min_ovlp_identity = 100.0;
     min_ovlp_len = 5000;
+    min_read_len = 5000;
     hpc = false;
     fuzz = 0;     //for transitive reduction
     iter = 1;     //iterations
@@ -47,6 +49,7 @@ struct algoParams
   void printParams ()
   {
     std::cerr << "INFO, printParams(), min_ovlp_len = " << min_ovlp_len << "\n";
+    std::cerr << "INFO, printParams(), min_read_len = " << min_read_len << "\n";
     std::cerr << "INFO, printParams(), min_ovlp_identity = " << min_ovlp_identity << "\n";
     std::cerr << "INFO, printParams(), depthReadLen = " << depthReadLen << "\n";
     std::cerr << "INFO, printParams(), k = " << k << "\n";

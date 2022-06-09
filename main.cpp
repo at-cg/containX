@@ -17,7 +17,7 @@ int main(int argc, char *argv[])
   //initialize default values of various parameters
   param.initParams();
 
-  while ((c = ketopt(&o, argc, argv, 1, "cd:D:f:g:hHi:I:l:L:m:n:N:p:s:t:T:w:", 0)) >= 0)
+  while ((c = ketopt(&o, argc, argv, 1, "cd:D:f:g:hHi:I:l:L:m:M:n:N:p:s:t:T:w:", 0)) >= 0)
   {
     if (c == 'c') param.removeAllContainedReads = true;
     else if (c == 'd') param.gfadumpfilename = o.arg;
@@ -31,6 +31,7 @@ int main(int argc, char *argv[])
     else if (c == 'l') param.min_ovlp_len = atoi(o.arg);
     else if (c == 'L') param.logFileName = o.arg;
     else if (c == 'm') param.cutoff = atof(o.arg);
+    else if (c == 'M') param.min_read_len = atoi(o.arg);
     else if (c == 'n') param.dumpNonRedudantContainedReads = o.arg;
     else if (c == 'N') param.dumpNonRedudantReads = o.arg;
     else if (c == 'p') param.hetReads = o.arg;
@@ -38,12 +39,13 @@ int main(int argc, char *argv[])
     else if (c == 't') param.threads = atoi(o.arg);
     else if (c == 'T') param.maxTipLen = atoi(o.arg);
     else if (c == 'w') param.depthReadLen = atoi(o.arg);
-  }
+  } 
 
   //print usage
   if (argc <= o.ind + 1) {
     std::cerr << "Usage: containX [options] <input-reads.fq> <in.paf>\n";
     std::cerr << "Options:\n";
+    std::cerr << "  -M NUM      min read length, default " << param.min_read_len << "\n";
     std::cerr << "  -l NUM      min overlap length, default " << param.min_ovlp_len << "\n";
     std::cerr << "  -i NUM      min overlap percentage identity [0.0-100.0], default " << param.min_ovlp_identity << "\n";
     std::cerr << "  -t NUM      thread count, default " << param.threads << "\n";

@@ -61,4 +61,21 @@ void inverse_map (const std::unordered_map<K, V> &map, std::unordered_map<V, K> 
   assert (inv.size() == map.size());
 }
 
+char complement(char n)
+{
+  switch(n)
+  {
+    case 'A':
+      return 'T';
+    case 'T':
+      return 'A';
+    case 'G':
+      return 'C';
+    case 'C':
+      return 'G';
+  }
+  assert(false);
+  return ' ';
+}
+
 #endif

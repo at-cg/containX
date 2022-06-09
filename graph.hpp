@@ -47,7 +47,7 @@ class containmentTuple
 {
   public:
     uint32_t src;              //read which is contained
-    uint32_t dst;
+    uint32_t dst;              //parent read
     uint32_t dst_start_offset; //(0-based; BED-like; closed) leftmost offset in dst's string
     uint32_t dst_end_offset;   //(0-based; BED-like; open)
     uint32_t rev;              //dst orientation
@@ -76,7 +76,9 @@ class graphcontainer
     std::vector<graphArc> edges; //size = 2 x suffix-prefix overlaps
     std::vector<uint32_t> offsets; //for CSR-style indexing
     std::vector<containmentTuple> containments; //size = count of contained overlaps
-    std::vector<uint32_t> containment_offsets; //for CSR-style indexing
+    std::vector<uint32_t> containment_offsets; //for CSR-style indexing (know id of parent reads)
+    std::vector<containmentTuple> containments_copy; //size = count of contained overlaps (same content but ordered differently than containments vector)
+    std::vector<uint32_t> containment_offsets_children; //for CSR-style indexing (know id of children reads)
 
     //save fastq read identifier into hash table, and give it an integer id
     uint32_t addStringToMap(const std::string &str)
@@ -211,25 +213,44 @@ class graphcontainer
       {
         auto it = std::remove_if (containments.begin(), containments.end(), [this](const containmentTuple &a) {return deletedReads[a.src] || deletedReads[a.dst]; });
         containments.erase (it, containments.end());
+
+        it = std::remove_if (containments_copy.begin(), containments_copy.end(), [this](const containmentTuple &a){return deletedReads[a.src] || deletedReads[a.dst]; });
+        containments_copy.erase (it, containments_copy.end());
       }
 
-      std::sort (containments.begin(), containments.end(), [](const containmentTuple &a, const containmentTuple &b) {
-          return a.src < b.src;});
+      std::sort (containments.begin(), containments.end(), [](const containmentTuple &a, const containmentTuple &b) { return a.src < b.src;});
+
+      std::sort (containments_copy.begin(), containments_copy.end(), [](const containmentTuple &a, const containmentTuple &b) { return a.dst < b.dst;});
 
       if (readCount == 0) return;
       containment_offsets.resize(readCount + 1, 0);
+      containment_offsets_children.resize(readCount + 1, 0);
 
       auto it_b = containments.begin();
 
       for(uint32_t i = 0; i < readCount; i++)
       {
-        //Range for adjacency list of vertex i
+        //Range for adjacency list of vertex i (i.e., all parent reads of read i)
         auto it_e = std::find_if(it_b, containments.end(), [i](const containmentTuple &e) { return e.src > i; });
         containment_offsets[i+1] = std::distance(containments.begin(), it_e);
         it_b = it_e;
       }
 
       assert (it_b == containments.end());
+
+      it_b = containments_copy.begin();
+
+      for(uint32_t i = 0; i < readCount; i++)
+      {
+        //Range for adjacency list of vertex i (i.e., all child reads of read i)
+        auto it_e = std::find_if(it_b, containments_copy.end(), [i](const containmentTuple &e) { return e.dst > i; });
+        containment_offsets_children[i+1] = std::distance(containments_copy.begin(), it_e);
+        it_b = it_e;
+      }
+
+      assert (it_b == containments_copy.end());
+      assert (containments_copy.size() == containments.size());
+      assert (containment_offsets.size() == containment_offsets_children.size());
 
 
       contained.assign (readCount, false);
@@ -415,7 +436,7 @@ class graphcontainer
     }
 
     //assumes indexing is done and edges are sorted
-    bool checkSymmetry ()
+    bool checkSymmetry () const
     {
       for (uint32_t i = 0, j = 0; i < edges.size(); i++)
       {
@@ -501,7 +522,7 @@ void ovlgraph_gen(const char *readfilename, const char *paffilename, const algoP
   uint64_t totPaf = 0, validPaf = 0, suffPrefPaf = 0, containedPaf = 0;
   while (paf_read(fp, &r) >= 0) {
     totPaf++;
-    if (r.ml * 100.0 / r.bl >= param.min_ovlp_identity)
+    if (r.ql >= param.min_read_len && r.tl >= param.min_read_len && r.ml * 100.0 / r.bl >= param.min_ovlp_identity)
     {
       if (std::min (r.te - r.ts, r.qe - r.qs) >= param.min_ovlp_len)
       {
@@ -663,6 +684,7 @@ void ovlgraph_gen(const char *readfilename, const char *paffilename, const algoP
 
   std::for_each(g.edges.begin(), g.edges.end(), [](graphArc &e){e.del = false;});
   assert (g.edges.size() <= UINT32_MAX); //otherwise our implementation may not work
+  g.containments_copy = g.containments;
   g.initVectors();
   processHetReads (hetReadsToIgnoreIfContained, g);
   g.initReadStrings(readfilename);

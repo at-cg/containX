@@ -2,6 +2,7 @@
 #define ASM_ALGO_H
 
 #include <set>
+#include <numeric>
 #include "common.hpp"
 #include "graph.hpp"
 #include "param.hpp"
@@ -79,7 +80,7 @@ void computeMinimizersFromString(std::vector<uint32_t> &container, const std::st
  * @param[in] end                     1-based, end string processing here in the current read string
  * @param[in] remaining_depth_bases   total count of bases to process during DFS
  */
-uint32_t dfs_procedure (const graphcontainer &g, uint32_t src_vertex, uint32_t beg, uint32_t end, uint32_t remaining_depth_bases, std::set<uint32_t> &visited_vertices, std::vector<uint32_t> &minimizers, const algoParams &param)
+uint32_t collectMinimizersusingDFS (const graphcontainer &g, uint32_t src_vertex, uint32_t beg, uint32_t end, uint32_t remaining_depth_bases, std::set<uint32_t> &visited_vertices, std::vector<uint32_t> &minimizers, const algoParams &param)
 {
   if (visited_vertices.find(src_vertex) != visited_vertices.end()) return 0U; //visited already
   uint32_t src_readid = src_vertex >> 1;
@@ -94,7 +95,7 @@ uint32_t dfs_procedure (const graphcontainer &g, uint32_t src_vertex, uint32_t b
   bool rev = src_vertex & 1; //orientation
 
 #ifdef VERBOSE
-  std::cerr << "INFO, dfs_procedure(), computing minimizers from read " << src_readid << ", vertex = " << src_vertex << ", offsets = [" << beg << "," << end << "), orientation = '" << "+-"[rev] << "'\n";
+  std::cerr << "INFO, collectMinimizersusingDFS(), computing minimizers from read " << src_readid << ", vertex = " << src_vertex << ", offsets = [" << beg << "," << end << "), orientation = '" << "+-"[rev] << "'\n";
 #endif
 
   computeMinimizersFromString(minimizers, g.readseq[src_readid], beg, end, rev, param);
@@ -124,14 +125,14 @@ uint32_t dfs_procedure (const graphcontainer &g, uint32_t src_vertex, uint32_t b
           end = nextReadLen - g.edges[j].ov_dst; //skip overlapping portion
           beg = end - std::min (end, remaining_depth_bases);
         }
-        bases_processed += dfs_procedure (g, adjVertexId, beg, end, remaining_depth_bases, visited_vertices, minimizers, param);
+        bases_processed += collectMinimizersusingDFS (g, adjVertexId, beg, end, remaining_depth_bases, visited_vertices, minimizers, param);
       }
     }
   }
   return bases_processed;
 }
 
-void identifyRedundantReads(const graphcontainer &g, std::vector<bool> &redundant, const algoParams &param, std::ofstream& log)
+void identifyRedundantReadsKmerHeuristic(const graphcontainer &g, std::vector<bool> &redundant, const algoParams &param, std::ofstream& log)
 {
 #pragma omp parallel
   {
@@ -166,14 +167,14 @@ void identifyRedundantReads(const graphcontainer &g, std::vector<bool> &redundan
           //should we also walk in opposite orientation? //TODO
 
           //set begin offset = end offset below to start collecting minimizers from adjacent vertices
-          bases_processed = dfs_procedure (g, vertexId, g.readseq[i].length(), g.readseq[i].length(), depth_bases, visited_vertices, mmWalkRead, param);
+          bases_processed = collectMinimizersusingDFS (g, vertexId, g.readseq[i].length(), g.readseq[i].length(), depth_bases, visited_vertices, mmWalkRead, param);
 
           vertexId = i << 1 | 1; //reverse orientation
-          bases_processed += dfs_procedure (g, vertexId, g.readseq[i].length(), g.readseq[i].length(), depth_bases, visited_vertices, mmWalkRead, param);
+          bases_processed += collectMinimizersusingDFS (g, vertexId, g.readseq[i].length(), g.readseq[i].length(), depth_bases, visited_vertices, mmWalkRead, param);
         }
 
 #ifdef VERBOSE
-        std::cerr << "INFO, identifyRedundantReads(), processed readid " << i << ", collected " << mmWalkRead.size() << " minimizers from contained read\n";
+        std::cerr << "INFO, identifyRedundantReadsKmerHeuristic(), processed readid " << i << ", collected " << mmWalkRead.size() << " minimizers from contained read\n";
 #endif
 
         if (mmWalkRead.size() == 0) continue; //no point going further
@@ -203,7 +204,7 @@ void identifyRedundantReads(const graphcontainer &g, std::vector<bool> &redundan
                 end = g.containments[j].dst_start_offset;
                 beg = end - std::min (end, depth_bases);
               }
-              bases_processed = dfs_procedure (g, parentVertexId, beg, end, depth_bases, visited_vertices, mmWalkParentReads, param);
+              bases_processed = collectMinimizersusingDFS (g, parentVertexId, beg, end, depth_bases, visited_vertices, mmWalkParentReads, param);
 
               //walk w.r.t. reverse orientation of read string
               revbit = (g.containments[j].rev == true) ? 0U : 1U;
@@ -218,13 +219,13 @@ void identifyRedundantReads(const graphcontainer &g, std::vector<bool> &redundan
                 end = g.containments[j].dst_start_offset;
                 beg = end - std::min (end, depth_bases);
               }
-              bases_processed += dfs_procedure (g, parentVertexId, beg, end, depth_bases, visited_vertices, mmWalkParentReads, param);
+              bases_processed += collectMinimizersusingDFS (g, parentVertexId, beg, end, depth_bases, visited_vertices, mmWalkParentReads, param);
             }
           }
         }
 
 #ifdef VERBOSE
-        std::cerr << "INFO, identifyRedundantReads(), collected " << mmWalkParentReads.size() << " minimizers from " << available_parent_count << " parent reads\n";
+        std::cerr << "INFO, identifyRedundantReadsKmerHeuristic(), collected " << mmWalkParentReads.size() << " minimizers from " << available_parent_count << " parent reads\n";
 #endif
 
         //keep unique minimizers only before comparing
@@ -246,13 +247,13 @@ void identifyRedundantReads(const graphcontainer &g, std::vector<bool> &redundan
           redundant[i] = true;
           if (!param.logFileName.empty()) {
 #pragma omp critical
-            log << g.umap_inverse.at(i) << "\tidentifyRedundantReads()\tREDUNDANT=T\tPARENTS=";
+            log << g.umap_inverse.at(i) << "\tidentifyRedundantReadsKmerHeuristic()\tREDUNDANT=T\tPARENTS=";
           }
         }
         else {
           if (!param.logFileName.empty()) {
 #pragma omp critical
-            log << g.umap_inverse.at(i) << "\tidentifyRedundantReads()\tREDUNDANT=F\tPARENTS=";
+            log << g.umap_inverse.at(i) << "\tidentifyRedundantReadsKmerHeuristic()\tREDUNDANT=F\tPARENTS=";
           }
         }
 
@@ -273,8 +274,138 @@ void identifyRedundantReads(const graphcontainer &g, std::vector<bool> &redundan
     }
   }
 
-  std::cerr << "INFO, identifyRedundantReads() finished\n";
+  std::cerr << "INFO, identifyRedundantReadsKmerHeuristic() finished\n";
 }
+
+/**
+ * @brief                       check whether one can spell string associated with vid via path from v_src
+ *                              to final_dst vertex inside subgraph with allcombined vertices
+ * @param[in] g
+ * @param[in] offset_vid        zero-based offset of first character in read(vid) yet to be matched
+ * @param[in] v_src             starting vertex
+ * @param[in] offset_src        zero-based offset of first character in read(v_src) after overlap
+ * @param[in] final_dst         destination vertex
+ * @param[in] final_offset_dst  zero-based offset of first character in read(final_dst) after overlap
+ * @param[in] vid               vertex id of the main read undergoing redundancy check
+ * @param[in] subgraph_vertices restrict graph traversal within these vertices
+ */
+bool checkSequenceViaDFS (const graphcontainer &g, uint32_t offset_vid, uint32_t v_src, uint32_t offset_src, uint32_t final_dst, uint32_t final_offset_dst, uint32_t vid, const std::set<uint32_t> &subgraph_vertices, std::ofstream& log)
+{
+  assert (subgraph_vertices.find (v_src) != subgraph_vertices.end());
+  assert (subgraph_vertices.find (final_dst) != subgraph_vertices.end());
+  uint32_t vid_read_len = g.readseq[vid>>1].length();
+  uint32_t src_read_len = g.readseq[v_src>>1].length();
+
+  if (offset_vid == vid_read_len) //completed scanning all characters of main read
+  {
+    if (v_src == final_dst && offset_src == final_offset_dst) return true;
+    else return false;
+  }
+  else
+  {
+    assert (offset_vid < vid_read_len);   //some characters in main read still pending
+    assert (offset_src == src_read_len);  //v_src read is completely checked
+    for (uint32_t j = g.offsets[v_src]; j < g.offsets[v_src+1]; j++) //neighbors of v_src
+    {
+      if (subgraph_vertices.find(g.edges[j].dst) == subgraph_vertices.end()) continue; //not in subgraph
+      uint32_t countChars = std::min(g.edges[j].len, vid_read_len - offset_vid);
+      assert(countChars > 0);
+
+      std::string adjacentRead = g.readseq[g.edges[j].dst>>1];
+
+      //reverse complement the adjacent read string if needed
+      if (g.edges[j].dst & 1)
+      {
+        std::reverse(adjacentRead.begin(), adjacentRead.end());
+        std::transform (adjacentRead.begin(), adjacentRead.end(), adjacentRead.begin(), complement);
+      }
+      std::string readSubStr = adjacentRead.substr (adjacentRead.length() - g.edges[j].len, countChars);
+
+      std::string refSubStr = g.readseq[vid>>1].substr (offset_vid, countChars);
+      if (readSubStr == refSubStr)
+        if (checkSequenceViaDFS (g, countChars + offset_vid, g.edges[j].dst, adjacentRead.length() - g.edges[j].len + countChars, final_dst, final_offset_dst, vid, subgraph_vertices, log))
+          return true;
+    }
+    return false;
+  }
+}
+
+void identifyRedundantReadsDiscardLongerReads(const graphcontainer &g, std::vector<bool> &redundant, const algoParams &param, std::ofstream& log)
+{
+  //process reads in descending order of their length
+  std::vector<uint32_t> idx (g.readCount);
+  std::iota (idx.begin(), idx.end(), 0);
+
+  //sort by descending order of read length
+  std::sort (idx.begin(), idx.end(), [&](uint32_t i1, uint32_t i2) {return g.readseq[i1].length() > g.readseq[i2].length();});
+  assert(g.checkSymmetry());
+  uint32_t n_reduced = 0;
+
+  //vertices either adjacent to vid or "contained" inside vid
+  std::set<uint32_t> subgraph_vertices;
+  std::set<uint32_t> incoming_vertices;
+  std::set<uint32_t> outgoing_vertices;
+  std::set<uint32_t> contained_vertices;
+
+  for (uint32_t i = 0; i < g.readCount; i++)
+  {
+    uint32_t rid = idx[i];
+    uint32_t vid = rid << 1 | 0; //forward orientation
+
+    subgraph_vertices.clear();
+    incoming_vertices.clear();
+    outgoing_vertices.clear();
+    contained_vertices.clear();
+
+    if (redundant[rid]) continue;
+
+    for (uint32_t j = g.offsets[vid]; j < g.offsets[vid+1]; j++)
+      if (redundant[g.edges[j].dst >> 1] == false) {
+        subgraph_vertices.insert (g.edges[j].dst);
+        outgoing_vertices.insert (g.edges[j].dst);
+      }
+
+    for (uint32_t j = g.offsets[vid^1U]; j < g.offsets[(vid^1U) + 1]; j++)
+      if (redundant[g.edges[j].dst >> 1] == false) {
+        subgraph_vertices.insert (g.edges[j].dst^1U);
+        incoming_vertices.insert (g.edges[j].dst^1U);
+      }
+
+    for (uint32_t j = g.containment_offsets_children[rid]; j < g.containment_offsets_children[rid+1]; j++) {
+      assert (g.containments_copy[j].dst == rid); //"dst" is parent read containing "src"
+      if (redundant[g.containments_copy[j].src] == false) {
+        uint32_t revbit = (g.containments_copy[j].rev == true) ? 1U : 0U;
+        subgraph_vertices.insert (g.containments_copy[j].src << 1 | revbit);
+        contained_vertices.insert (g.containments_copy[j].src << 1 | revbit);
+      }
+    }
+
+    if (subgraph_vertices.find(vid) != subgraph_vertices.end()) continue;
+    if (subgraph_vertices.find(vid^1U) != subgraph_vertices.end()) continue;
+
+    bool checkSucceeded = false;
+    bool checkedOnce = false;
+
+    for (uint32_t j = g.offsets[vid^1U]; j < g.offsets[(vid^1U) + 1]; j++)
+      for (uint32_t k = g.offsets[vid]; k < g.offsets[vid+1]; k++)
+        if ((checkedOnce == false || checkSucceeded == true) && redundant[g.edges[j].dst >> 1] == false && redundant[g.edges[k].dst >> 1] == false) {
+          checkSucceeded = checkSequenceViaDFS (g, g.edges[j].ov_src, g.edges[j].dst^1U, g.readseq[g.edges[j].dst>>1].length(), g.edges[k].dst, g.edges[k].ov_src, vid, subgraph_vertices, log);
+          checkedOnce = true;
+        }
+
+    if (checkSucceeded == true) {
+      n_reduced++;
+      redundant[rid] = true;
+      log << g.umap_inverse.at(rid) << "\tidentifyRedundantReadsDiscardLongerReads()\tREDUNDANT=T\t" << rid << "\tCHILDREN=" << contained_vertices.size() << "\tIN-DEGREE=" << incoming_vertices.size() << "\tOUT-DEGREE=" << outgoing_vertices.size() << std::endl;
+    }
+    else
+      log << g.umap_inverse.at(rid) << "\tidentifyRedundantReadsDiscardLongerReads()\tREDUNDANT=F\t" << rid << "\tCHILDREN=" << contained_vertices.size() << "\tIN-DEGREE=" << incoming_vertices.size() << "\tOUT-DEGREE=" << outgoing_vertices.size() << std::endl;
+  }
+
+  std::cerr << "INFO, identifyRedundantReadsDiscardLongerReads(), " << n_reduced << " reads marked for deletion\n";
+  std::cerr << "INFO, identifyRedundantReadsDiscardLongerReads() finished\n";
+}
+
 
 void ovlgraph_simplify (graphcontainer &g, const algoParams &param)
 {
@@ -289,7 +420,14 @@ void ovlgraph_simplify (graphcontainer &g, const algoParams &param)
     else
     {
       std::vector<bool> redundant = g.deletedReads;
-      identifyRedundantReads (g, redundant, param, logFile); //our algorithm
+      identifyRedundantReadsDiscardLongerReads (g, redundant, param, logFile); //our algorithm
+
+      g.deletedReads = redundant;
+      g.index(); //re-index
+      g.printGraphStats();
+      redundant = g.deletedReads;
+
+      identifyRedundantReadsKmerHeuristic (g, redundant, param, logFile); //our algorithm
       g.deletedReads = redundant;
     }
     g.index(); //re-index
