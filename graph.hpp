@@ -177,8 +177,10 @@ class graphcontainer
         edges.erase (it, edges.end());
       }
 
+      //order such that edges with same "src" occur next to each other
+      //within each bucket, prefer edges of bigger length first to optimize "identifyRedundantReadsDiscardLongerReads()"
       std::sort (edges.begin(), edges.end(), [](const graphArc &a, const graphArc &b) {
-          return std::tie (a.src, a.len, a.dst) < std::tie (b.src, b.len, b.dst);});
+          return std::tie (a.src, b.len, a.dst) < std::tie (b.src, a.len, b.dst);});
 
       //make sure there are no duplicate entries
       auto last = std::unique (edges.begin(), edges.end(), [](const graphArc &a, const graphArc &b) {

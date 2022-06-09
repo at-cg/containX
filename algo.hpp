@@ -382,6 +382,7 @@ void identifyRedundantReadsDiscardLongerReads(const graphcontainer &g, std::vect
 
     if (subgraph_vertices.find(vid) != subgraph_vertices.end()) continue;
     if (subgraph_vertices.find(vid^1U) != subgraph_vertices.end()) continue;
+    if (contained_vertices.size() == 0) continue; //no benefit in pruning reads that don't contain others
 
     bool checkSucceeded = false;
     bool checkedOnce = false;
