@@ -11,5 +11,5 @@ minimap2 -t 32 -N 50 -cx map-ont $HAP1 non-redundant.fasta > mm2.paf
 minimap2 -t 32 -N 50 -cx map-ont $HAP2 non-redundant.fasta >> mm2.paf
 cat mm2.paf | awk '{if ($3 == 0 && $2 == $4 && $2 == $10) print $6"\t"$8"\t"$9}' > tmp
 cat mm2.paf | awk '{if ($8 == 0 && $7 == $9 && $7 == $10) print $6"\t"$8"\t"$9}' >> tmp
-cat tmp | sort -k 1,1 -k2,2n -k3,3nr >  mm2.exactmapped.bed
+cat tmp | sort -k 1,1 -k2,2n -k3,3nr | bedtools merge >  mm2.exactmapped.bed
 bedtools subtract -f 1 -a $GAPS -b mm2.exactmapped.bed > unresolved_gaps.bed
