@@ -19,4 +19,6 @@ bedtools genomecov -i mm2.exactmapped.bed -g $GENOMESIZE -bga | awk '{if ($4==0)
 bedtools subtract -A -a mm2.exactmapped.nocov.bed -b reads.fasta.headers.nocov.bed > mm2.exactmapped.nocov.subtracted.bed
 python3 useful_scripts/printEdgeBedIntervals.py $GENOMESIZE 25000 > genome_25kbp_ends.bed
 bedtools subtract -A -a mm2.exactmapped.nocov.subtracted.bed -b genome_25kbp_ends.bed > mm2.exactmapped.nocov.subtracted.noends.bed
+#combine adjacent intervals that are likely segregrated due to FN calls for contained reads
+bedtools merge -d 1000 -i mm2.exactmapped.nocov.subtracted.noends.bed > mm2.exactmapped.nocov.subtracted.noends.merged.bed
 rm tmp1 tmp2 tmp3 non-contained.fasta  
