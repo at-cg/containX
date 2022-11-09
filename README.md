@@ -4,7 +4,7 @@ containX
 containX is a prototype implementation of an algorithm that decides which contained reads can be dropped during overlap graph sparsfication. Reads which are substrings of longer reads are typically referred to as contained reads. The [string graph model](https://doi.org/10.1093/bioinformatics/bti1114) filters out contained reads during graph construction. Contained reads are typically considered redundant by commonly-used long-read assemblers. However, removing all contained reads can lead to coverage gaps, especially in diploid, polyploid genomes and metagenomes (see example below). Here we have implemented novel heuristics to distinguish redundant and non-redundant contained reads.
 
 <p align="center">
-<img src="https://i.postimg.cc/mgkQccwp/readme-Contain-X-gap.jpg" width=800px"> <br>
+<img src="./data/README-Illustration.jpeg" width=800px"> <br>
 </p>
 
 ## Install
