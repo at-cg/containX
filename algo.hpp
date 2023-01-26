@@ -151,7 +151,7 @@ void identifyRedundantReads(const graphcontainer &g, std::vector<bool> &redundan
       mmWalkParentReads.clear();
       mmCommon.clear();
 
-      if (g.contained[i] == true && g.deletedReads[i] == false)
+      if (g.contained[i] == true && g.deletedReads[i] == false && g.mustRetainReads[i] == false)
       {
         assert (g.readseq[i].length() > 0);
 

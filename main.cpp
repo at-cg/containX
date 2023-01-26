@@ -17,7 +17,7 @@ int main(int argc, char *argv[])
   //initialize default values of various parameters
   param.initParams();
 
-  while ((c = ketopt(&o, argc, argv, 1, "cd:D:f:g:hHi:I:l:L:m:n:N:p:s:t:T:w:", 0)) >= 0)
+  while ((c = ketopt(&o, argc, argv, 1, "cd:D:f:g:hHi:I:l:L:m:n:N:p:s:t:T:u:w:", 0)) >= 0)
   {
     if (c == 'c') param.removeAllContainedReads = true;
     else if (c == 'd') param.gfadumpfilename = o.arg;
@@ -37,6 +37,7 @@ int main(int argc, char *argv[])
     else if (c == 's') param.d = atof(o.arg);
     else if (c == 't') param.threads = atoi(o.arg);
     else if (c == 'T') param.maxTipLen = atoi(o.arg);
+    else if (c == 'u') param.retainedReadsUserChoice = o.arg;
     else if (c == 'w') param.depthReadLen = atoi(o.arg);
   }
 
@@ -52,10 +53,11 @@ int main(int argc, char *argv[])
     std::cerr << "  -m NUM      min fraction of minimizer matches for redundant contained reads, default " << param.cutoff << "\n";
     std::cerr << "  -w NUM      walk length cutoff as a factor of read length, default " << param.depthReadLen << "\n";
     std::cerr << "  -H          use homopolymer-compressed k-mer\n";
-    std::cerr << "  -c          simply mark all contained reads as redundant\n";
+    std::cerr << "  -c          simply mark all contained reads as redundant, overrides -u param\n";
     std::cerr << "  -f NUM      fuzz value during transitive reduction, default " << param.fuzz << " (-1 disables reduction)\n";
     std::cerr << "  -T NUM      threshold for tip length removal, default " << param.maxTipLen << "\n";
     std::cerr << "  -p FILE     list of non-repetitive heterozygous read ids (from hifiasm)\n";
+    std::cerr << "  -u FILE     list of user-specified read ids that must be retained\n";
     std::cerr << "  -n FILE     dump read ids of non-redundant contained reads\n";
     std::cerr << "  -N FILE     dump read ids of non-redundant reads\n";
     std::cerr << "  -L FILE     dump algorithm log\n";

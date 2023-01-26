@@ -73,6 +73,7 @@ class graphcontainer
     std::vector<std::string> readseq;  //size = count of reads
     std::vector<bool> contained; //size = count of reads
     std::vector<bool> deletedReads;   //size = count of reads
+    std::vector<bool> mustRetainReads;  //size = count of reads
     std::vector<graphArc> edges; //size = 2 x suffix-prefix overlaps
     std::vector<uint32_t> offsets; //for CSR-style indexing
     std::vector<containmentTuple> containments; //size = count of contained overlaps
@@ -94,7 +95,7 @@ class graphcontainer
     }
 
     //initialize basic vectors
-    void initVectors()
+    void initVectors(const std::unordered_set<std::string> &mustRetailReadIds)
     {
       readCount = umap.size();
       vertexCount = 2 * readCount;
@@ -111,6 +112,23 @@ class graphcontainer
 
       for (auto &e : containments)
         contained[e.src] = true;
+
+      //Init mustRetainReads vector based on user-specified list
+      mustRetainReads.resize(readCount, false);
+      if (mustRetailReadIds.size() > 0)
+      {
+        uint32_t n_retain = 0;
+        for (const auto& readIdStr: mustRetailReadIds) {
+          if (umap.find(readIdStr) != umap.end()) {
+            uint32_t id = umap[readIdStr];
+            if (contained[id] == true) {
+              n_retain++;
+              mustRetainReads[id] = true;
+            }
+          }
+        }
+        std::cerr << "INFO, initVectors(), " << n_retain << " contained reads will be retained\n";
+      }
     }
 
     //parse + save all reads, and mark the contained ones
@@ -139,7 +157,8 @@ class graphcontainer
     {
       std::cerr << "INFO, printGraphStats(), graph has " << edges.size() << " edges\n";
       std::cerr << "INFO, printGraphStats(), multiedges : " << std::boolalpha << checkMultiEdges() << ", symmetric : " << checkSymmetry() << "\n";
-      std::cerr << "INFO, printGraphStats(), graph has " << vertexCount << " vertices from " << readCount << " reads in total\n";
+      std::cerr << "INFO, printGraphStats(), initial input graph has " << vertexCount << " vertices from " << readCount << " reads\n";
+      std::cerr << "INFO, printGraphStats(), current graph has " << vertexCount - 2*(readCount-std::count(deletedReads.begin(), deletedReads.end(), true)) << " vertices from " << readCount - std::count(deletedReads.begin(), deletedReads.end(), true) << " reads\n";
       std::cerr << "INFO, printGraphStats(), " << std::count(contained.begin(), contained.end(), true) << " reads are marked as contained in graph\n";
 
       uint32_t junctionReads, i;
@@ -441,7 +460,7 @@ void processHetReads (const std::unordered_set<std::string> &hetReadsToIgnoreIfC
     if (g.umap.find(readIdStr) != g.umap.end()) {
       uint32_t id = g.umap[readIdStr];
       if (g.contained[id] == true) {
-        if (g.deletedReads[id] == false) {
+        if (g.deletedReads[id] == false && g.mustRetainReads[id] == false) {
           n_del++;
           g.deletedReads[id] = true;
         }
@@ -452,6 +471,7 @@ void processHetReads (const std::unordered_set<std::string> &hetReadsToIgnoreIfC
   std::cerr << "INFO, processHetReads(), " << n_del << " reads marked for deletion\n";
 }
 
+//The function below is not being used currently
 void processHomReads (const std::unordered_set<std::string> &homReadsToIgnoreIfContained, graphcontainer &g)
 {
   uint32_t n_del = 0;
@@ -491,6 +511,18 @@ void ovlgraph_gen(const char *readfilename, const char *paffilename, const algoP
       hetReadsToIgnoreIfContained.insert(str);
 
     std::cerr << "INFO, ovlgraph_gen(), parsed " << hetReadsToIgnoreIfContained.size() << " non-repetitive heterozygous reads from input file " << param.hetReads << "\n";
+  }
+
+  //check if user has supplied a list of read ids that must be retained
+  std::unordered_set<std::string> mustRetailReadIds;
+  if (!param.retainedReadsUserChoice.empty())
+  {
+    std::string str;
+    std::ifstream fs(param.retainedReadsUserChoice);
+    while(getline(fs,str))
+      mustRetailReadIds.insert(str);
+
+    std::cerr << "INFO, ovlgraph_gen(), parsed " << mustRetailReadIds.size() << " user-specified list of reads that must be retained from input file " << param.retainedReadsUserChoice << "\n";
   }
 
   //read input paf file
@@ -663,7 +695,7 @@ void ovlgraph_gen(const char *readfilename, const char *paffilename, const algoP
 
   std::for_each(g.edges.begin(), g.edges.end(), [](graphArc &e){e.del = false;});
   assert (g.edges.size() <= UINT32_MAX); //otherwise our implementation may not work
-  g.initVectors();
+  g.initVectors(mustRetailReadIds);
   processHetReads (hetReadsToIgnoreIfContained, g);
   g.initReadStrings(readfilename);
   g.index();
