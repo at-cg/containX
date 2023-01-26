@@ -1,4 +1,4 @@
-The reads in the above toy example have been generated using the same random sequence R[1..5000] of length 5000 as [example-1](../data/example-1). We also use sequence T which is identical to sequence R except the 500th character has been substituted from base T to base C. We have sampled six reads as following:
+The reads in the above toy example have been generated using the same random sequence R[1..5000] of length 5000 as [example-1](../example-1). We also use sequence T which is identical to sequence R except the 500th character has been substituted from base T to base C. We have sampled six reads as following:
 
 - `read1` = R[1..3000]
 - `read2` = R[1000..4000]
