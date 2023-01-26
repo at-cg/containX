@@ -158,7 +158,7 @@ class graphcontainer
       std::cerr << "INFO, printGraphStats(), graph has " << edges.size() << " edges\n";
       std::cerr << "INFO, printGraphStats(), multiedges : " << std::boolalpha << checkMultiEdges() << ", symmetric : " << checkSymmetry() << "\n";
       std::cerr << "INFO, printGraphStats(), initial input graph has " << vertexCount << " vertices from " << readCount << " reads\n";
-      std::cerr << "INFO, printGraphStats(), current graph has " << vertexCount - 2*(readCount-std::count(deletedReads.begin(), deletedReads.end(), true)) << " vertices from " << readCount - std::count(deletedReads.begin(), deletedReads.end(), true) << " reads\n";
+      std::cerr << "INFO, printGraphStats(), current graph has " << 2*(readCount-std::count(deletedReads.begin(), deletedReads.end(), true)) << " vertices from " << readCount - std::count(deletedReads.begin(), deletedReads.end(), true) << " reads\n";
       std::cerr << "INFO, printGraphStats(), " << std::count(contained.begin(), contained.end(), true) << " reads are marked as contained in graph\n";
 
       uint32_t junctionReads, i;

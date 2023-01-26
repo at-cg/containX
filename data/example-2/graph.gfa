@@ -1,0 +1,21 @@
+S	read0	*
+S	read1	*
+S	read2	*
+S	read4	*
+S	read5	*
+L	read0	+	read1	+	2001M
+L	read1	+	read2	-	2001M
+L	read1	-	read0	-	2001M
+L	read1	-	read5	-	2001M
+L	read2	+	read1	-	2001M
+L	read2	+	read4	-	2501M
+L	read4	+	read2	-	2501M
+L	read4	-	read5	-	2551M
+L	read5	+	read1	+	2001M
+L	read5	+	read4	+	2551M
+C	read4	+	read1	+	550	3001M
+x	read5	read4_substringT_1_3000	3000	0	2	0
+x	read2	read6_revcomplement_substringT_2000_5000	3001	0	2	0
+x	read4	read5_substringT_450_4500	4051	0	1	1
+x	read1	read2_substringR_1000_4000	3001	1	1	2
+x	read0	read1_substringR_1_3000	3000	0	1	0
