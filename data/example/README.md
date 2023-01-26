@@ -1,4 +1,4 @@
-The above toy example has been generated using a random genome sequence R[1..5000] of length 5000. We have sampled six reads from R as following:
+The above toy example has been generated using a random sequence R[1..5000] of length 5000. We have sampled six reads from R as following:
 
 - `read1` = R[1..5000]
 - `read2` = R[1..3000]
