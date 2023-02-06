@@ -22,6 +22,7 @@ struct algoParams
   std::string gfadumpfilename;
   std::string pacedumpfilename;
   std::string dumpNonRedudantContainedReads;
+  std::string dumpNonRedudantContainedJunctionReads;
   std::string dumpNonRedudantReads;
   std::string logFileName;
   std::string hetReads;           //non-repetitive heterozygous reads predicted using hifiasm

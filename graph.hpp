@@ -369,6 +369,25 @@ class graphcontainer
     }
 
     /**
+     * print read ids which are contained and form junction but not redundant
+     */
+    void outputNonRedudantContainedJunctionReads (const std::string &filename)
+    {
+      if (filename.empty()) return;
+      std::ofstream outstrm (filename);
+
+      for (auto &e : umap)
+      {
+        uint32_t i = e.second; //read id
+        //print original read id
+        if (contained[i] == true && deletedReads[i] == false) {
+          if (getDegree(i << 1 | 0) > 1 || getDegree(i << 1 | 1) > 1)
+            outstrm  << e.first << "\n";
+        }
+      }
+    }
+
+    /**
      * print read ids which are contained but not redundant
      */
     void outputNonRedudantReads (const std::string &filename)

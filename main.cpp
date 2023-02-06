@@ -17,7 +17,7 @@ int main(int argc, char *argv[])
   //initialize default values of various parameters
   param.initParams();
 
-  while ((c = ketopt(&o, argc, argv, 1, "cd:D:f:g:hHi:I:l:L:m:n:N:p:s:t:T:u:w:", 0)) >= 0)
+  while ((c = ketopt(&o, argc, argv, 1, "cd:D:f:g:hHi:I:j:l:L:m:n:N:p:s:t:T:u:w:", 0)) >= 0)
   {
     if (c == 'c') param.removeAllContainedReads = true;
     else if (c == 'd') param.gfadumpfilename = o.arg;
@@ -28,6 +28,7 @@ int main(int argc, char *argv[])
     else if (c == 'H') param.hpc = true;
     else if (c == 'i') param.min_ovlp_identity = atof(o.arg);
     else if (c == 'I') param.iter = atoi(o.arg);
+    else if (c == 'j') param.dumpNonRedudantContainedJunctionReads = o.arg;
     else if (c == 'l') param.min_ovlp_len = atoi(o.arg);
     else if (c == 'L') param.logFileName = o.arg;
     else if (c == 'm') param.cutoff = atof(o.arg);
@@ -59,6 +60,7 @@ int main(int argc, char *argv[])
     std::cerr << "  -p FILE     list of non-repetitive heterozygous read ids (from hifiasm)\n";
     std::cerr << "  -u FILE     list of user-specified read ids that must be retained\n";
     std::cerr << "  -n FILE     dump read ids of non-redundant contained reads\n";
+    std::cerr << "  -j FILE     dump read ids of non-redundant contained junction reads\n";
     std::cerr << "  -N FILE     dump read ids of non-redundant reads\n";
     std::cerr << "  -L FILE     dump algorithm log\n";
     std::cerr << "  -d FILE     dump graph in gfa format without sequences\n";
@@ -94,6 +96,7 @@ int main(int argc, char *argv[])
   g.outputGFA (param.gfadumpfilename, param.printReadStrings);
   g.exportPACE (param.pacedumpfilename);
   g.outputNonRedudantContainedReads (param.dumpNonRedudantContainedReads);
+  g.outputNonRedudantContainedJunctionReads (param.dumpNonRedudantContainedJunctionReads);
   g.outputNonRedudantReads (param.dumpNonRedudantReads);
 
   //log complete command given by user
