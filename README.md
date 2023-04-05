@@ -38,6 +38,6 @@ minimap2 -t 32 -w 101 -k 27 -g 500 -B 8 -O 8,48 -E 4,2 -cx ava-ont reads.fastq r
 containX -t 32 -n nonRedundantContainedReads.txt reads.fastq overlaps.paf
 ```
 
-## Preprint
+## Publication
 
-- "[Coverage-preserving sparsification of overlap graphs for long-read assembly](https://doi.org/10.1101/2022.03.17.484715)". *BioRxiv*, 2022.
+- "[Coverage-preserving sparsification of overlap graphs for long-read assembly](https://doi.org/10.1093/bioinformatics/btad124)". *Bioinformatics*, 2023.
